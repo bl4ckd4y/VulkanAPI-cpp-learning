@@ -97,6 +97,10 @@ private:
                                m_vkRenderFinishedSemaphores;  // Семафоры для завершения рендеринга
   std::vector<vk::UniqueFence> m_vkInFlightFences;            // Заборы для кадров в полёте
 
+  // Семафоры для каждого изображения swapchain
+  std::vector<vk::UniqueSemaphore>
+      m_vkImageInFlightSemaphores;  // Семафоры для изображений в обработке
+
   // Вершинный буфер
   vk::UniqueBuffer       m_vkVertexBuffer;        // Буфер вершин (RAII)
   vk::UniqueDeviceMemory m_vkVertexBufferMemory;  // Память буфера вершин (RAII)

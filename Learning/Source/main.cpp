@@ -1,6 +1,7 @@
 #include <iostream>
 
 #include "VulkanApp.h"
+#include "VulkanLogger.h"
 
 int main()
 {
@@ -21,6 +22,10 @@ int main()
   {
     std::cerr << "Критическая ошибка: " << e.what() << std::endl;
 
+    // Логируем ошибку, если логгер инициализирован
+    VulkanLogger::error("Критическая ошибка: " + std::string(e.what()));
+    VulkanLogger::cleanup();
+
     // Ожидание ввода для предотвращения закрытия консоли
     std::cout << "Нажмите Enter для выхода..." << std::endl;
     std::cin.get();
@@ -30,6 +35,10 @@ int main()
   catch (...)
   {
     std::cerr << "Неизвестная критическая ошибка!" << std::endl;
+
+    // Логируем ошибку, если логгер инициализирован
+    VulkanLogger::error("Неизвестная критическая ошибка!");
+    VulkanLogger::cleanup();
 
     // Ожидание ввода для предотвращения закрытия консоли
     std::cout << "Нажмите Enter для выхода..." << std::endl;

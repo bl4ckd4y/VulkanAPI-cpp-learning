@@ -31,6 +31,7 @@ add_executable(${PROJECT_NAME}
     ${SRC}/VulkanSwapChain.cpp
     ${SRC}/VulkanRenderer.cpp
     ${SRC}/VulkanUtils.cpp
+    ${SRC}/VulkanLogger.cpp
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Vulkan::Vulkan SDL2::SDL2)

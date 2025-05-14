@@ -313,6 +313,9 @@ void VulkanRenderer::createSyncObjects()
   m_vkRenderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
   m_vkInFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
 
+  // Создание семафоров для каждого изображения swapchain
+  m_vkImageInFlightSemaphores.resize(m_swapChain.getImages().size());
+
   // Создание семафоров и заборов
   vk::SemaphoreCreateInfo semaphoreInfo = {};
   vk::FenceCreateInfo     fenceInfo     = {};
@@ -330,6 +333,20 @@ void VulkanRenderer::createSyncObjects()
     catch (const vk::SystemError& e)
     {
       throw std::runtime_error("Не удалось создать объекты синхронизации: " +
+                               std::string(e.what()));
+    }
+  }
+
+  // Создание семафоров для каждого изображения swapchain
+  for (size_t i = 0; i < m_swapChain.getImages().size(); i++)
+  {
+    try
+    {
+      m_vkImageInFlightSemaphores[i] = m_device.getDevice().createSemaphoreUnique(semaphoreInfo);
+    }
+    catch (const vk::SystemError& e)
+    {
+      throw std::runtime_error("Не удалось создать семафоры для изображений: " +
                                std::string(e.what()));
     }
   }
@@ -510,7 +527,8 @@ bool VulkanRenderer::drawFrame()
     submitInfo.pCommandBuffers         = commandBuffers;
 
     // Семафоры сигнала (сигнализируем о завершении рендеринга)
-    vk::Semaphore signalSemaphores[] = {*m_vkRenderFinishedSemaphores[m_currentFrame]};
+    // Используем семафор, связанный с конкретным изображением swapchain
+    vk::Semaphore signalSemaphores[] = {*m_vkImageInFlightSemaphores[imageIndex]};
     submitInfo.signalSemaphoreCount  = 1;
     submitInfo.pSignalSemaphores     = signalSemaphores;
 

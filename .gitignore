@@ -9,11 +9,10 @@ CTestTestfile.cmake
 # Compiled Shaders
 shaders/*.spv
 
-# lnk
-*.lnk
-
 # Other
 Other/
+*.lnk
+*.log
 
 # Visual Studio files
 *.vcxproj

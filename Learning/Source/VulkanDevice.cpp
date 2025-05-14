@@ -1,5 +1,6 @@
 #include "VulkanDevice.h"
 
+#include <fstream>
 #include <iostream>
 #include <set>
 #include <stdexcept>
@@ -25,6 +26,9 @@ int VulkanDevice::init()
     // Создание логического устройства
     createLogicalDevice();
 
+    // Вывод информации о расширениях
+    printDeviceExtensionsInfo();
+
     std::cout << "VulkanDevice инициализирован успешно!" << std::endl;
     return 0;
   }
@@ -38,6 +42,72 @@ int VulkanDevice::init()
 void VulkanDevice::cleanup()
 {
   // Логическое устройство уничтожается автоматически через RAII (vk::UniqueDevice)
+}
+
+// Вывод информации о расширениях устройства
+void VulkanDevice::printDeviceExtensionsInfo()
+{
+  try
+  {
+    // Получаем доступные расширения
+    auto availableExtensions = m_vkPhysicalDevice.enumerateDeviceExtensionProperties();
+
+    // --- Запись подробной информации в файл ---
+    std::ofstream logFile("device_extensions.log", std::ios::out | std::ios::trunc);
+    if (logFile.is_open())
+    {
+      logFile << "\n============ Информация о расширениях устройства ============\n";
+      logFile << "Доступно расширений: " << availableExtensions.size() << std::endl;
+      logFile << "Список всех расширений:" << std::endl;
+      for (const auto& extension : availableExtensions)
+      {
+        logFile << "  - " << extension.extensionName << " (версия: " << extension.specVersion << ")"
+                << std::endl;
+      }
+      logFile << "Используемые расширения:" << std::endl;
+      for (const auto& requiredExt : m_deviceExtensions)
+      {
+        bool found = false;
+        for (const auto& ext : availableExtensions)
+        {
+          if (strcmp(requiredExt, ext.extensionName) == 0)
+          {
+            found = true;
+            break;
+          }
+        }
+        logFile << "  - " << requiredExt << ": "
+                << (found ? "поддерживается" : "НЕ поддерживается!") << std::endl;
+      }
+      logFile << "============================================================\n" << std::endl;
+      logFile.close();
+    }
+    else
+    {
+      std::cerr << "Не удалось открыть файл extensions.log для записи!" << std::endl;
+    }
+
+    // --- В консоль выводим только используемые расширения ---
+    std::cout << "Используемые расширения:" << std::endl;
+    for (const auto& requiredExt : m_deviceExtensions)
+    {
+      bool found = false;
+      for (const auto& ext : availableExtensions)
+      {
+        if (strcmp(requiredExt, ext.extensionName) == 0)
+        {
+          found = true;
+          break;
+        }
+      }
+      std::cout << "  - " << requiredExt << ": "
+                << (found ? "поддерживается" : "НЕ поддерживается!") << std::endl;
+    }
+  }
+  catch (const std::exception& e)
+  {
+    std::cerr << "Ошибка при получении информации о расширениях: " << e.what() << std::endl;
+  }
 }
 
 // Выбор физического устройства

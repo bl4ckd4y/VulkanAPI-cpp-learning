@@ -40,6 +40,11 @@ public:
    */
   void cleanup();
 
+  /**
+   * @brief Выводит информацию о расширениях устройства
+   */
+  void printDeviceExtensionsInfo();
+
   // Геттеры
   vk::PhysicalDevice getPhysicalDevice() const { return m_vkPhysicalDevice; }
   vk::Device         getDevice() const { return *m_vkDevice; }

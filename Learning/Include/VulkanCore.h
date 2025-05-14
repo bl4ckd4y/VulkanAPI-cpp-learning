@@ -8,6 +8,15 @@
 #include <vector>
 #include <vulkan/vulkan.hpp>
 
+#include "VulkanLogger.h"
+
+// Включение/выключение валидационных слоев
+#ifdef NDEBUG
+const bool enableValidationLayers = false;
+#else
+const bool enableValidationLayers = true;
+#endif
+
 /**
  * @brief Базовый класс для работы с Vulkan API.
  * Отвечает за инициализацию Vulkan, создание экземпляра и поверхности.
@@ -59,7 +68,12 @@ private:
   vk::UniqueSurfaceKHR m_vkSurface;   // Поверхность Vulkan (RAII)
 
   // Методы инициализации
-  void initWindow();      // Инициализация окна SDL
-  void cleanupWindow();   // Очистка окна SDL
-  void createInstance();  // Создание экземпляра Vulkan
+  void initWindow();                   // Инициализация окна SDL
+  void cleanupWindow();                // Очистка окна SDL
+  void createInstance();               // Создание экземпляра Vulkan
+  void initLogger();                   // Инициализация логгера
+  bool checkValidationLayerSupport();  // Проверка поддержки валидационных слоев
+
+  // Константы
+  const std::vector<const char*> m_validationLayers = {"VK_LAYER_KHRONOS_validation"};
 };
