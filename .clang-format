@@ -1,0 +1,61 @@
+BasedOnStyle: Google
+Language: Cpp
+ColumnLimit: 100
+IndentWidth: 2
+AccessModifierOffset: -2
+AlignAfterOpenBracket: Align
+AlignConsecutiveAssignments: true
+AlignConsecutiveDeclarations: true
+BreakBeforeBraces: Allman
+SpaceBeforeParens: ControlStatements
+PointerAlignment: Left
+
+# Короткие конструкции только для очень простых функций
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: false
+
+# Сортировка и группировка include'ов
+SortIncludes: true
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex:           '^<.*\\.h>'
+    Priority:        1
+  - Regex:           '^<.*>'
+    Priority:        2
+  - Regex:           '.*'
+    Priority:        3
+
+# Пробелы и скобки
+SpacesInAngles: false
+SpacesInCStyleCastParentheses: false
+SpacesInContainerLiterals: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+
+# Стиль инициализации и trailing comma
+Cpp11BracedListStyle: true
+
+# Выравнивание указателей
+DerivePointerAlignment: false
+SpaceAfterCStyleCast: false
+
+# Выравнивание операндов
+AlignOperands: true
+
+# Переносы для длинных выражений
+BreakBeforeBinaryOperators: None
+BreakBeforeTernaryOperators: true
+
+# Для enum class
+EnumIndent: true
+
+# Для namespace
+NamespaceIndentation: All
+
+# Для макросов
+AlignConsecutiveMacros: true
+
+# Для комментариев (если используешь IWYU или другие pragma)
+CommentPragmas: '^ IWYU pragma:'
