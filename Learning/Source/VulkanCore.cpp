@@ -18,41 +18,41 @@ int VulkanCore::init()
 {
   try
   {
-    // Удаляем инициализацию логгера, так как это делается в main.cpp
-    // initLogger();
+    // УЧЕБНЫЙ КОММЕНТАРИЙ: Инициализация Vulkan API
+    // Процесс инициализации Vulkan включает несколько этапов:
+    // 1. Создание окна (SDL2) для отображения графики
+    // 2. Создание экземпляра Vulkan (vkInstance) - точка входа в Vulkan API
+    // 3. Настройка валидационных слоёв для отладки (если включены)
+    // 4. Создание поверхности (surface) для связи Vulkan с оконной системой
 
-    VulkanLogger::info("Начало инициализации VulkanCore");
+    VulkanLogger::info("Инициализация VulkanCore...");
 
-    // Инициализация окна
+    // Инициализируем окно SDL
     initWindow();
 
-    // Создание экземпляра Vulkan
+    // Создаем экземпляр Vulkan
     createInstance();
 
-    // Настройка отладочного мессенджера, если включены валидационные слои
-    if (m_enableValidationLayers)
+    // Получаем поверхность для отображения
+    // УЧЕБНЫЙ КОММЕНТАРИЙ: Поверхность (VkSurfaceKHR) - это абстракция,
+    // которая связывает Vulkan с конкретной оконной системой (Windows, X11, Wayland и т.д.).
+    // Для создания поверхности используем SDL_Vulkan_CreateSurface, который
+    // скрывает различия между разными платформами.
+    VkSurfaceKHR surfaceHandle;
+    if (!SDL_Vulkan_CreateSurface(m_pWindow, static_cast<VkInstance>(*m_vkInstance),
+                                  &surfaceHandle))
     {
-      VulkanLogger::info("Настройка отладочного мессенджера Vulkan");
-      if (!VulkanLogger::setupDebugMessenger(getInstance()))
-      {
-        VulkanLogger::error("Не удалось настроить отладочный мессенджер");
-      }
+      throw std::runtime_error("Не удалось создать поверхность Vulkan: " +
+                               std::string(SDL_GetError()));
     }
+    // УЧЕБНЫЙ КОММЕНТАРИЙ: RAII в Vulkan
+    // Используем vk::UniqueSurfaceKHR для автоматического управления ресурсом.
+    // Когда объект выходит из области видимости, деструктор автоматически вызывает
+    // vkDestroySurfaceKHR
+    m_vkSurface = vk::UniqueSurfaceKHR(vk::SurfaceKHR(surfaceHandle), *m_vkInstance);
 
-    // Создание поверхности (surface)
-    VulkanLogger::info("Создание поверхности Vulkan");
-    VkSurfaceKHR vkSurface_hSurface = VK_NULL_HANDLE;
-    if (!SDL_Vulkan_CreateSurface(m_pWindow, static_cast<VkInstance>(getInstance()),
-                                  &vkSurface_hSurface))
-    {
-      VulkanLogger::error("Не удалось создать Vulkan surface через SDL2");
-      throw std::runtime_error("Не удалось создать Vulkan surface через SDL2");
-    }
-    m_vkSurface = vk::UniqueSurfaceKHR(vkSurface_hSurface, getInstance());
-    VulkanLogger::info("Поверхность Vulkan создана успешно");
-
-    VulkanLogger::info("VulkanCore инициализирован успешно!");
-    return 0;
+    VulkanLogger::info("VulkanCore инициализирован успешно");
+    return 0;  // Успешная инициализация
   }
   catch (const std::exception& e)
   {
@@ -181,64 +181,75 @@ bool VulkanCore::checkValidationLayerSupport()
 // Создание экземпляра Vulkan
 void VulkanCore::createInstance()
 {
-  VulkanLogger::info("Создание экземпляра Vulkan");
+  // УЧЕБНЫЙ КОММЕНТАРИЙ: Создание экземпляра Vulkan (VkInstance)
+  // Экземпляр Vulkan - это точка входа в Vulkan API. При создании экземпляра мы:
+  // 1. Предоставляем информацию о приложении (название, версия)
+  // 2. Указываем необходимые расширения (в т.ч. для работы с окном)
+  // 3. Настраиваем валидационные слои для отладки (если включены)
+  // 4. Инициализируем Vulkan API с нужными параметрами
 
-  // Проверка поддержки валидационных слоев
+  // Проверяем поддержку валидационных слоев, если они включены
   if (m_enableValidationLayers && !checkValidationLayerSupport())
   {
-    VulkanLogger::error("Запрошенные валидационные слои не поддерживаются!");
-    throw std::runtime_error("Запрошенные валидационные слои не поддерживаются!");
+    throw std::runtime_error("Запрошенные валидационные слои недоступны!");
   }
 
-  // Информация о приложении
+  // Информация о приложении для драйвера
   vk::ApplicationInfo appInfo = {};
-  appInfo.pApplicationName    = "Vulkan Application";
+  appInfo.pApplicationName    = "Vulkan Learning App";
   appInfo.applicationVersion  = VK_MAKE_VERSION(1, 0, 0);
   appInfo.pEngineName         = "No Engine";
   appInfo.engineVersion       = VK_MAKE_VERSION(1, 0, 0);
   appInfo.apiVersion          = VK_API_VERSION_1_2;
 
-  // Получение расширений для SDL2
-  unsigned int extCount = 0;
-  if (!SDL_Vulkan_GetInstanceExtensions(m_pWindow, &extCount, nullptr))
+  // Информация о создании экземпляра
+  vk::InstanceCreateInfo createInfo = {};
+  createInfo.pApplicationInfo       = &appInfo;
+
+  // УЧЕБНЫЙ КОММЕНТАРИЙ: Расширения Vulkan
+  // Vulkan требует явного указания всех необходимых расширений.
+  // Для работы с окном требуются специфичные расширения (surface, platform-specific и т.д.)
+  // SDL2 упрощает работу с расширениями, предоставляя функцию SDL_Vulkan_GetInstanceExtensions
+
+  // Получаем необходимые расширения от SDL
+  uint32_t extensionCount = 0;
+  if (!SDL_Vulkan_GetInstanceExtensions(m_pWindow, &extensionCount, nullptr))
   {
-    VulkanLogger::error("Не удалось получить количество расширений Vulkan через SDL2");
-    throw std::runtime_error("Не удалось получить количество расширений Vulkan через SDL2");
+    throw std::runtime_error("Не удалось получить количество расширений Vulkan: " +
+                             std::string(SDL_GetError()));
   }
 
-  std::vector<const char*> extensions(extCount);
-  if (!SDL_Vulkan_GetInstanceExtensions(m_pWindow, &extCount, extensions.data()))
+  std::vector<const char*> extensions(extensionCount);
+  if (!SDL_Vulkan_GetInstanceExtensions(m_pWindow, &extensionCount, extensions.data()))
   {
-    VulkanLogger::error("Не удалось получить расширения Vulkan через SDL2");
-    throw std::runtime_error("Не удалось получить расширения Vulkan через SDL2");
+    throw std::runtime_error("Не удалось получить расширения Vulkan: " +
+                             std::string(SDL_GetError()));
   }
 
-  // Добавляем расширения для отладки, если включены валидационные слои
+  VulkanLogger::info("Требуемые расширения Vulkan:");
+  for (const auto& extension : extensions)
+  {
+    VulkanLogger::info("  - " + std::string(extension));
+  }
+
+  // Если включены валидационные слои, добавляем расширение для отладки
   if (m_enableValidationLayers)
   {
-    VulkanLogger::info("Добавление отладочных расширений");
-    VulkanLogger::getRequiredExtensions(extensions);
+    extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
   }
 
-  // Логирование всех используемых расширений
-  std::stringstream extLog;
-  extLog << "Используемые расширения экземпляра (" << extensions.size() << "):";
-  for (const auto& ext : extensions)
-  {
-    extLog << " " << ext;
-  }
-  VulkanLogger::info(extLog.str());
-
-  // Создание экземпляра Vulkan
-  vk::InstanceCreateInfo createInfo  = {};
-  createInfo.pApplicationInfo        = &appInfo;
+  // Устанавливаем расширения
   createInfo.enabledExtensionCount   = static_cast<uint32_t>(extensions.size());
   createInfo.ppEnabledExtensionNames = extensions.data();
 
-  // Добавляем валидационные слои, если включены
+  // УЧЕБНЫЙ КОММЕНТАРИЙ: Валидационные слои Vulkan
+  // Валидационные слои - это компоненты Vulkan, которые проверяют корректность вызовов API,
+  // отлавливают ошибки и предоставляют диагностику. Их нужно использовать при разработке,
+  // но отключать в релизной версии для повышения производительности.
+
+  // Устанавливаем валидационные слои, если они включены
   if (m_enableValidationLayers)
   {
-    VulkanLogger::info("Включение валидационных слоев");
     createInfo.enabledLayerCount   = static_cast<uint32_t>(m_validationLayers.size());
     createInfo.ppEnabledLayerNames = m_validationLayers.data();
   }
@@ -247,14 +258,19 @@ void VulkanCore::createInstance()
     createInfo.enabledLayerCount = 0;
   }
 
-  try
+  // Создаем экземпляр Vulkan
+  // УЧЕБНЫЙ КОММЕНТАРИЙ: RAII в Vulkan C++ API (vulkan.hpp)
+  // Используем vk::createInstanceUnique() вместо vkCreateInstance для автоматического
+  // управления временем жизни объекта. Когда m_vkInstance выходит из области видимости,
+  // уничтожение VkInstance происходит автоматически.
+  m_vkInstance = vk::createInstanceUnique(createInfo);
+
+  // Список всех доступных расширений
+  auto availableExtensions = vk::enumerateInstanceExtensionProperties();
+  VulkanLogger::info("Доступные расширения Vulkan:");
+  for (const auto& extension : availableExtensions)
   {
-    m_vkInstance = vk::createInstanceUnique(createInfo);
-    VulkanLogger::info("Экземпляр Vulkan создан успешно");
-  }
-  catch (const vk::SystemError& e)
-  {
-    VulkanLogger::error("Не удалось создать экземпляр Vulkan: " + std::string(e.what()));
-    throw std::runtime_error("Не удалось создать экземпляр Vulkan: " + std::string(e.what()));
+    VulkanLogger::info("  - " + std::string(extension.extensionName.data()) + ": " +
+                       std::to_string(extension.specVersion));
   }
 }

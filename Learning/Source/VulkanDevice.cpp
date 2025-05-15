@@ -116,71 +116,180 @@ void VulkanDevice::printDeviceExtensionsInfo()
 // Выбор физического устройства
 void VulkanDevice::pickPhysicalDevice()
 {
-  // Получение списка поддерживаемых физических устройств
-  auto physicalDevices = m_vkInstance.enumeratePhysicalDevices();
+  // УЧЕБНЫЙ КОММЕНТАРИЙ: Выбор физического устройства (GPU)
+  // В Vulkan разделяют физические и логические устройства:
+  // - Физическое устройство (VkPhysicalDevice): представляет конкретную видеокарту
+  // - Логическое устройство (VkDevice): интерфейс для работы с выбранной видеокартой
+  //
+  // При выборе физического устройства для Vulkan необходимо:
+  // 1. Получить список всех доступных GPU
+  // 2. Проверить, что устройство поддерживает нужные возможности (графическую очередь, поверхность,
+  // расширения)
+  // 3. Выбрать наиболее подходящее устройство (дискретная видеокарта предпочтительнее
+  // интегрированной)
 
-  if (physicalDevices.empty())
+  VulkanLogger::info("Выбор физического устройства...");
+
+  // Получаем список физических устройств
+  std::vector<vk::PhysicalDevice> devices = m_vkInstance.enumeratePhysicalDevices();
+
+  if (devices.empty())
   {
-    throw std::runtime_error("Не найдено физических устройств с поддержкой Vulkan");
+    throw std::runtime_error("Не найдено устройств с поддержкой Vulkan!");
   }
 
-  // Выбор первого подходящего устройства
-  for (const auto& device : physicalDevices)
+  VulkanLogger::info("Найдено устройств с поддержкой Vulkan: " + std::to_string(devices.size()));
+
+  // Выбираем первое подходящее устройство
+  for (const auto& device : devices)
   {
+    // Получаем информацию об устройстве для лучшего логирования
+    vk::PhysicalDeviceProperties deviceProperties = device.getProperties();
+    std::string                  deviceName       = deviceProperties.deviceName;
+
+    VulkanLogger::info("Проверка устройства: " + deviceName);
+
+    // УЧЕБНЫЙ КОММЕНТАРИЙ: Типы устройств в Vulkan
+    // vk::PhysicalDeviceType::eDiscreteGpu - дискретная видеокарта (предпочтительно)
+    // vk::PhysicalDeviceType::eIntegratedGpu - интегрированная видеокарта
+    // vk::PhysicalDeviceType::eVirtualGpu - виртуальная видеокарта
+    // vk::PhysicalDeviceType::eCpu - программная эмуляция на CPU
+    // vk::PhysicalDeviceType::eOther - другой тип устройства
+
+    std::string deviceType;
+    switch (deviceProperties.deviceType)
+    {
+      case vk::PhysicalDeviceType::eDiscreteGpu:
+        deviceType = "Дискретная видеокарта";
+        break;
+      case vk::PhysicalDeviceType::eIntegratedGpu:
+        deviceType = "Интегрированная видеокарта";
+        break;
+      case vk::PhysicalDeviceType::eVirtualGpu:
+        deviceType = "Виртуальная видеокарта";
+        break;
+      case vk::PhysicalDeviceType::eCpu:
+        deviceType = "Программная эмуляция (CPU)";
+        break;
+      default:
+        deviceType = "Другой тип устройства";
+        break;
+    }
+
+    VulkanLogger::info("Тип устройства: " + deviceType);
+
+    // Проверяем, подходит ли устройство
     if (isDeviceSuitable(device))
     {
+      VulkanLogger::info("Выбрано устройство: " + deviceName);
       m_vkPhysicalDevice = device;
 
-      // Вывод информации о выбранном устройстве
-      vk::PhysicalDeviceProperties deviceProperties = m_vkPhysicalDevice.getProperties();
-      // Преобразуем deviceName в std::string используя string constructor со старт и длиной
-      std::string deviceName(deviceProperties.deviceName.data());
-      VulkanLogger::info("Выбрано устройство: " + deviceName);
-      break;
+      // Запоминаем индексы семейств очередей
+      m_queueFamilyIndices = findQueueFamilies(device);
+
+      // Вывод детальной информации об устройстве
+      VulkanLogger::info("ID устройства: " + std::to_string(deviceProperties.deviceID));
+      VulkanLogger::info("Версия драйвера: " + std::to_string(deviceProperties.driverVersion));
+      VulkanLogger::info(
+          "Версия Vulkan: " + std::to_string(VK_VERSION_MAJOR(deviceProperties.apiVersion)) + "." +
+          std::to_string(VK_VERSION_MINOR(deviceProperties.apiVersion)) + "." +
+          std::to_string(VK_VERSION_PATCH(deviceProperties.apiVersion)));
+
+      return;
     }
   }
 
-  if (m_vkPhysicalDevice == vk::PhysicalDevice(nullptr))
-  {
-    throw std::runtime_error("Не удалось найти подходящее GPU");
-  }
+  throw std::runtime_error("Не найдено подходящее устройство с поддержкой Vulkan!");
 }
 
 // Создание логического устройства
 void VulkanDevice::createLogicalDevice()
 {
-  // Получение индексов семейств очередей
-  m_queueFamilyIndices = findQueueFamilies(m_vkPhysicalDevice);
+  // УЧЕБНЫЙ КОММЕНТАРИЙ: Создание логического устройства Vulkan
+  // Логическое устройство - это интерфейс для взаимодействия с физическим устройством (GPU).
+  // При создании логического устройства необходимо:
+  // 1. Указать, какие семейства очередей мы будем использовать
+  // 2. Указать, какие расширения устройства нам нужны (например, swapchain)
+  // 3. Указать, какие функции устройства нам требуются
+  // 4. Получить интерфейсы для работы с очередями
 
-  // Создание информации о создаваемых очередях
+  VulkanLogger::info("Создание логического устройства...");
+
+  // Получаем индексы семейств очередей для графики и отображения
+  QueueFamilyIndices indices = m_queueFamilyIndices;
+
+  // УЧЕБНЫЙ КОММЕНТАРИЙ: Очереди в Vulkan
+  // Vulkan использует очереди для выполнения команд на GPU.
+  // Разные типы очередей поддерживают разные операции:
+  // - Графические очереди (VK_QUEUE_GRAPHICS_BIT): для рендеринга графики
+  // - Вычислительные очереди (VK_QUEUE_COMPUTE_BIT): для вычислений на GPU
+  // - Очереди передачи (VK_QUEUE_TRANSFER_BIT): для копирования данных
+  // - Очереди презентации: для отображения на экран (требуют расширение KHR)
+  //
+  // Устройство может иметь несколько семейств очередей с разной функциональностью
+
+  // Создаем структуры для настройки очередей
   std::vector<vk::DeviceQueueCreateInfo> queueCreateInfos;
-  std::set<uint32_t> uniqueQueueFamilies = {m_queueFamilyIndices.graphicsFamily.value(),
-                                            m_queueFamilyIndices.presentFamily.value()};
+  std::set<uint32_t>                     uniqueQueueFamilies = {indices.graphicsFamily.value(),
+                                                                indices.presentFamily.value()};
 
+  // Приоритет очереди (от 0.0 до 1.0)
   float queuePriority = 1.0f;
+
+  // Создаем информацию для каждого уникального семейства очередей
   for (uint32_t queueFamily : uniqueQueueFamilies)
   {
     vk::DeviceQueueCreateInfo queueCreateInfo = {};
     queueCreateInfo.queueFamilyIndex          = queueFamily;
-    queueCreateInfo.queueCount                = 1;
+    queueCreateInfo.queueCount                = 1;  // Создаем только одну очередь в семействе
     queueCreateInfo.pQueuePriorities          = &queuePriority;
     queueCreateInfos.push_back(queueCreateInfo);
   }
 
-  // Указание используемых функций устройства
+  // Функции устройства (пока не используем никаких дополнительных)
   vk::PhysicalDeviceFeatures deviceFeatures = {};
 
-  // Создание логического устройства
-  vk::DeviceCreateInfo createInfo    = {};
-  createInfo.pQueueCreateInfos       = queueCreateInfos.data();
-  createInfo.queueCreateInfoCount    = static_cast<uint32_t>(queueCreateInfos.size());
-  createInfo.pEnabledFeatures        = &deviceFeatures;
+  // Информация о создании устройства
+  vk::DeviceCreateInfo createInfo = {};
+  createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
+  createInfo.pQueueCreateInfos    = queueCreateInfos.data();
+  createInfo.pEnabledFeatures     = &deviceFeatures;
+
+  // УЧЕБНЫЙ КОММЕНТАРИЙ: Расширения устройства
+  // Расширения устройства добавляют дополнительную функциональность.
+  // Самые важные расширения:
+  // - VK_KHR_swapchain: для создания цепочки обмена (отображение на экран)
+  // - VK_KHR_maintenance1, VK_KHR_maintenance2, и т.д.: улучшения базового API
+  // - VK_KHR_dedicated_allocation: для эффективного управления памятью
+
+  // Указываем необходимые расширения устройства
   createInfo.enabledExtensionCount   = static_cast<uint32_t>(m_deviceExtensions.size());
   createInfo.ppEnabledExtensionNames = m_deviceExtensions.data();
 
-  // Создание логического устройства
+  VulkanLogger::info("Запрошенные расширения устройства:");
+  for (const auto& extension : m_deviceExtensions)
+  {
+    VulkanLogger::info("  - " + std::string(extension));
+  }
+
+  // В Vulkan 1.0 приходилось указывать слои на уровне устройства, но в новых версиях
+  // это не требуется, однако для совместимости указываем их и для устройства
+  if (m_enableValidationLayers)
+  {
+    createInfo.enabledLayerCount   = static_cast<uint32_t>(m_validationLayers.size());
+    createInfo.ppEnabledLayerNames = m_validationLayers.data();
+  }
+  else
+  {
+    createInfo.enabledLayerCount = 0;
+  }
+
+  // Создаем логическое устройство
   try
   {
+    // УЧЕБНЫЙ КОММЕНТАРИЙ: RAII в Vulkan (продолжение)
+    // vk::UniqueDevice - это RAII-обертка для VkDevice.
+    // При уничтожении объекта автоматически вызывается vkDestroyDevice
     m_vkDevice = m_vkPhysicalDevice.createDeviceUnique(createInfo);
     VulkanLogger::info("Логическое устройство создано успешно");
   }
@@ -189,9 +298,12 @@ void VulkanDevice::createLogicalDevice()
     throw std::runtime_error("Не удалось создать логическое устройство: " + std::string(e.what()));
   }
 
-  // Получение очередей
-  m_vkGraphicsQueue = m_vkDevice->getQueue(m_queueFamilyIndices.graphicsFamily.value(), 0);
-  m_vkPresentQueue  = m_vkDevice->getQueue(m_queueFamilyIndices.presentFamily.value(), 0);
+  // Получаем очереди от созданного устройства
+  m_vkGraphicsQueue = m_vkDevice->getQueue(indices.graphicsFamily.value(), 0);
+  VulkanLogger::info("Получена графическая очередь");
+
+  m_vkPresentQueue = m_vkDevice->getQueue(indices.presentFamily.value(), 0);
+  VulkanLogger::info("Получена очередь презентации");
 }
 
 // Проверка пригодности устройства

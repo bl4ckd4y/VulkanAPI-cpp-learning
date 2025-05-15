@@ -105,28 +105,65 @@ void VulkanRenderer::createRenderPass()
 
 void VulkanRenderer::createGraphicsPipeline()
 {
-  // Загрузка байт-кода шейдеров
-  auto vertShaderCode = VulkanUtils::readFile("Learning/Shaders/triangle.vert.spv");
-  auto fragShaderCode = VulkanUtils::readFile("Learning/Shaders/triangle.frag.spv");
+  // УЧЕБНЫЙ КОММЕНТАРИЙ: Графический конвейер в Vulkan
+  // Графический конвейер (Graphics Pipeline) определяет все этапы обработки графики,
+  // от загрузки вершин до вывода пикселей. В отличие от OpenGL, в Vulkan вся конфигурация
+  // конвейера задаётся заранее и фиксируется при создании, что увеличивает производительность.
+  //
+  // Основные этапы графического конвейера:
+  // 1. Input Assembler - сбор вершинных данных
+  // 2. Vertex Shader - обработка каждой вершины
+  // 3. Tessellation - опционально, подразделение геометрии
+  // 4. Geometry Shader - опционально, генерация новой геометрии
+  // 5. Rasterization - преобразование примитивов в фрагменты
+  // 6. Fragment Shader - обработка каждого фрагмента (пикселя)
+  // 7. Color Blending - смешивание цветов с буфером кадра
 
-  // Создание шейдерных модулей
-  auto vertShaderModule = createShaderModule(vertShaderCode);
-  auto fragShaderModule = createShaderModule(fragShaderCode);
+  VulkanLogger::info("Создание графического конвейера...");
 
-  // Описание стадий шейдеров
+  // УЧЕБНЫЙ КОММЕНТАРИЙ: Шейдеры в Vulkan
+  // В отличие от OpenGL, шейдеры в Vulkan не компилируются во время выполнения.
+  // Они предварительно компилируются в бинарный формат SPIR-V, который загружается в приложение.
+  // SPIR-V - это промежуточное представление, которое делает компиляцию шейдеров более
+  // предсказуемой.
+
+  // Загрузка скомпилированных шейдеров
+  std::vector<char> vertShaderCode = VulkanUtils::readFile("Learning/Shaders/triangle.vert.spv");
+  std::vector<char> fragShaderCode = VulkanUtils::readFile("Learning/Shaders/triangle.frag.spv");
+
+  VulkanLogger::info("Загружен вершинный шейдер, размер: " + std::to_string(vertShaderCode.size()) +
+                     " байт");
+  VulkanLogger::info(
+      "Загружен фрагментный шейдер, размер: " + std::to_string(fragShaderCode.size()) + " байт");
+
+  // Создаем VkShaderModule для каждого шейдера
+  vk::UniqueShaderModule vertShaderModule = createShaderModule(vertShaderCode);
+  vk::UniqueShaderModule fragShaderModule = createShaderModule(fragShaderCode);
+
+  // УЧЕБНЫЙ КОММЕНТАРИЙ: Точки входа шейдеров
+  // В шейдерах Vulkan указывается точка входа - функция, с которой начинается выполнение шейдера.
+  // Обычно это функция "main", но может быть и другое имя.
+
+  // Настройка для вершинного шейдера
   vk::PipelineShaderStageCreateInfo vertShaderStageInfo = {};
-  vertShaderStageInfo.stage                             = vk::ShaderStageFlagBits::eVertex;
-  vertShaderStageInfo.module                            = *vertShaderModule;
-  vertShaderStageInfo.pName                             = "main";  // Имя точки входа в шейдер
+  vertShaderStageInfo.stage  = vk::ShaderStageFlagBits::eVertex;  // Тип шейдера
+  vertShaderStageInfo.module = *vertShaderModule;                 // Модуль шейдера
+  vertShaderStageInfo.pName  = "main";                            // Точка входа
 
+  // Настройка для фрагментного шейдера
   vk::PipelineShaderStageCreateInfo fragShaderStageInfo = {};
-  fragShaderStageInfo.stage                             = vk::ShaderStageFlagBits::eFragment;
-  fragShaderStageInfo.module                            = *fragShaderModule;
-  fragShaderStageInfo.pName                             = "main";  // Имя точки входа в шейдер
+  fragShaderStageInfo.stage  = vk::ShaderStageFlagBits::eFragment;  // Тип шейдера
+  fragShaderStageInfo.module = *fragShaderModule;                   // Модуль шейдера
+  fragShaderStageInfo.pName  = "main";                              // Точка входа
 
+  // Этапы шейдеров в конвейере
   vk::PipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
-  // Информация о вершинных данных
+  // УЧЕБНЫЙ КОММЕНТАРИЙ: Описание вершинных данных
+  // В Vulkan необходимо явно указать, как интерпретировать данные вершин.
+  // Это включает шаг вершин (stride), формат атрибутов, смещение и т.д.
+
+  // Информация о вершинном вводе
   auto bindingDescription    = Vertex::getBindingDescription();
   auto attributeDescriptions = Vertex::getAttributeDescriptions();
 
@@ -137,10 +174,22 @@ void VulkanRenderer::createGraphicsPipeline()
       static_cast<uint32_t>(attributeDescriptions.size());
   vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
-  // Описание сборки примитивов
+  // УЧЕБНЫЙ КОММЕНТАРИЙ: Сборка примитивов
+  // Указываем, как вершины собираются в примитивы:
+  // - Точки (POINT_LIST): каждая вершина - отдельная точка
+  // - Линии (LINE_LIST): каждая пара вершин - отдельная линия
+  // - Треугольники (TRIANGLE_LIST): каждые три вершины - отдельный треугольник
+  // - Полоса треугольников (TRIANGLE_STRIP): более эффективный способ задания треугольников
+
+  // Настройка входного сборщика
   vk::PipelineInputAssemblyStateCreateInfo inputAssembly = {};
-  inputAssembly.topology                                 = vk::PrimitiveTopology::eTriangleList;
-  inputAssembly.primitiveRestartEnable                   = VK_FALSE;
+  inputAssembly.topology = vk::PrimitiveTopology::eTriangleList;  // Рисуем треугольники
+  inputAssembly.primitiveRestartEnable = VK_FALSE;  // Не используем перезапуск примитивов
+
+  // УЧЕБНЫЙ КОММЕНТАРИЙ: Область просмотра и ножницы
+  // Viewport определяет преобразование из координат изображения в нормализованные координаты.
+  // Scissors определяет область отсечения пикселей (только пиксели внутри области будут
+  // обрабатываться).
 
   // Настройка вьюпорта и ножниц
   vk::Viewport viewport = {};
@@ -152,7 +201,7 @@ void VulkanRenderer::createGraphicsPipeline()
   viewport.maxDepth     = 1.0f;
 
   vk::Rect2D scissor = {};
-  scissor.offset     = vk::Offset2D{0, 0};
+  scissor.offset     = vk::Offset2D(0, 0);
   scissor.extent     = m_swapChain.getExtent();
 
   vk::PipelineViewportStateCreateInfo viewportState = {};
@@ -161,74 +210,117 @@ void VulkanRenderer::createGraphicsPipeline()
   viewportState.scissorCount                        = 1;
   viewportState.pScissors                           = &scissor;
 
+  // УЧЕБНЫЙ КОММЕНТАРИЙ: Растеризация в Vulkan
+  // Растеризация преобразует геометрию (треугольники) в фрагменты (пиксели).
+  // Основные параметры растеризации включают:
+  // - Режим заполнения (FILL, LINE, POINT)
+  // - Отсечение задних граней (CULL_BACK, CULL_FRONT, CULL_NONE)
+  // - Порядок вершин (CLOCKWISE, COUNTER_CLOCKWISE) для определения передней грани
+
   // Настройка растеризатора
   vk::PipelineRasterizationStateCreateInfo rasterizer = {};
-  rasterizer.depthClampEnable                         = VK_FALSE;
-  rasterizer.rasterizerDiscardEnable                  = VK_FALSE;
-  rasterizer.polygonMode                              = vk::PolygonMode::eFill;
-  rasterizer.lineWidth                                = 1.0f;
-  rasterizer.cullMode        = vk::CullModeFlagBits::eNone;  // отключаем отсеивание граней
-  rasterizer.frontFace       = vk::FrontFace::eCounterClockwise;
-  rasterizer.depthBiasEnable = VK_FALSE;
+  rasterizer.depthClampEnable        = VK_FALSE;  // Не обрезать фрагменты за пределами глубины
+  rasterizer.rasterizerDiscardEnable = VK_FALSE;  // Не отбрасывать геометрию
+  rasterizer.polygonMode             = vk::PolygonMode::eFill;       // Режим заполнения: заполнение
+  rasterizer.lineWidth               = 1.0f;                         // Толщина линии
+  rasterizer.cullMode                = vk::CullModeFlagBits::eBack;  // Отсекать задние грани
+  rasterizer.frontFace = vk::FrontFace::eCounterClockwise;  // Порядок вершин для передней грани
+  rasterizer.depthBiasEnable = VK_FALSE;                    // Не использовать смещение глубины
 
-  // Настройка мультисемплинга (отключен)
+  // УЧЕБНЫЙ КОММЕНТАРИЙ: Мультисэмплинг
+  // Мультисэмплинг (MSAA) - техника сглаживания краёв (anti-aliasing),
+  // которая работает путем взятия нескольких выборок на пиксель.
+
+  // Настройка мультисэмплинга
   vk::PipelineMultisampleStateCreateInfo multisampling = {};
-  multisampling.sampleShadingEnable                    = VK_FALSE;
-  multisampling.rasterizationSamples                   = vk::SampleCountFlagBits::e1;
+  multisampling.sampleShadingEnable                    = VK_FALSE;  // Отключаем сэмпл-шейдинг
+  multisampling.rasterizationSamples =
+      vk::SampleCountFlagBits::e1;  // Количество выборок на пиксель
+
+  // УЧЕБНЫЙ КОММЕНТАРИЙ: Смешивание цветов
+  // Color blending определяет, как новый цвет фрагмента смешивается с существующим цветом в буфере.
+  // Существует два основных способа:
+  // 1. Логические операции (побитовые операции между новым и старым цветом)
+  // 2. Смешивание через уравнение (src * srcFactor + dst * dstFactor)
 
   // Настройка смешивания цветов
   vk::PipelineColorBlendAttachmentState colorBlendAttachment = {};
   colorBlendAttachment.colorWriteMask =
       vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
       vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
-  colorBlendAttachment.blendEnable = VK_FALSE;
+  colorBlendAttachment.blendEnable = VK_FALSE;  // Отключаем смешивание для простоты
 
   vk::PipelineColorBlendStateCreateInfo colorBlending = {};
-  colorBlending.logicOpEnable                         = VK_FALSE;
-  colorBlending.attachmentCount                       = 1;
-  colorBlending.pAttachments                          = &colorBlendAttachment;
+  colorBlending.logicOpEnable                         = VK_FALSE;  // Отключаем логические операции
+  colorBlending.logicOp = vk::LogicOp::eCopy;  // Не используется при logicOpEnable = VK_FALSE
+  colorBlending.attachmentCount   = 1;
+  colorBlending.pAttachments      = &colorBlendAttachment;
+  colorBlending.blendConstants[0] = 0.0f;
+  colorBlending.blendConstants[1] = 0.0f;
+  colorBlending.blendConstants[2] = 0.0f;
+  colorBlending.blendConstants[3] = 0.0f;
 
-  // Создание layout'а пайплайна
+  // УЧЕБНЫЙ КОММЕНТАРИЙ: Layout конвейера
+  // Pipeline layout описывает, какие данные могут быть переданы в шейдеры.
+  // Это включает uniform буферы, текстуры, push константы и т.д.
+  // На этом этапе мы не используем никаких ресурсов, поэтому layout простой.
+
+  // Создание layout конвейера
   vk::PipelineLayoutCreateInfo pipelineLayoutInfo = {};
-  pipelineLayoutInfo.setLayoutCount               = 0;
-  pipelineLayoutInfo.pushConstantRangeCount       = 0;
+  pipelineLayoutInfo.setLayoutCount               = 0;  // Не используем дескрипторные наборы
+  pipelineLayoutInfo.pSetLayouts                  = nullptr;
+  pipelineLayoutInfo.pushConstantRangeCount       = 0;  // Не используем push константы
+  pipelineLayoutInfo.pPushConstantRanges          = nullptr;
 
   try
   {
     m_vkPipelineLayout = m_device.getDevice().createPipelineLayoutUnique(pipelineLayoutInfo);
+    VulkanLogger::info("Pipeline layout создан успешно");
   }
   catch (const vk::SystemError& e)
   {
     throw std::runtime_error("Не удалось создать pipeline layout: " + std::string(e.what()));
   }
 
-  // Создание графического пайплайна
+  // УЧЕБНЫЙ КОММЕНТАРИЙ: Объединение всех настроек конвейера
+  // Все ранее созданные структуры объединяются в одну структуру создания графического конвейера.
+  // Это демонстрирует явное определение всех этапов, которое требуется в Vulkan.
+
+  // Создание графического конвейера
   vk::GraphicsPipelineCreateInfo pipelineInfo = {};
-  pipelineInfo.stageCount                     = 2;
-  pipelineInfo.pStages                        = shaderStages;
-  pipelineInfo.pVertexInputState              = &vertexInputInfo;
-  pipelineInfo.pInputAssemblyState            = &inputAssembly;
-  pipelineInfo.pViewportState                 = &viewportState;
-  pipelineInfo.pRasterizationState            = &rasterizer;
-  pipelineInfo.pMultisampleState              = &multisampling;
-  pipelineInfo.pDepthStencilState             = nullptr;
-  pipelineInfo.pColorBlendState               = &colorBlending;
-  pipelineInfo.pDynamicState                  = nullptr;
-  pipelineInfo.layout                         = *m_vkPipelineLayout;
-  pipelineInfo.renderPass                     = *m_vkRenderPass;
-  pipelineInfo.subpass                        = 0;
-  pipelineInfo.basePipelineHandle             = nullptr;
+  pipelineInfo.stageCount =
+      2;  // Количество программируемых стадий (вершинный + фрагментный шейдеры)
+  pipelineInfo.pStages             = shaderStages;
+  pipelineInfo.pVertexInputState   = &vertexInputInfo;
+  pipelineInfo.pInputAssemblyState = &inputAssembly;
+  pipelineInfo.pViewportState      = &viewportState;
+  pipelineInfo.pRasterizationState = &rasterizer;
+  pipelineInfo.pMultisampleState   = &multisampling;
+  pipelineInfo.pDepthStencilState  = nullptr;  // Не используем буфер глубины
+  pipelineInfo.pColorBlendState    = &colorBlending;
+  pipelineInfo.pDynamicState       = nullptr;  // Не используем динамические состояния
+  pipelineInfo.layout              = *m_vkPipelineLayout;
+  pipelineInfo.renderPass          = *m_vkRenderPass;
+  pipelineInfo.subpass             = 0;  // Индекс подпрохода
+
+  // Можно указать родительский конвейер для наследования
+  pipelineInfo.basePipelineHandle = nullptr;
+  pipelineInfo.basePipelineIndex  = -1;
 
   try
   {
-    auto result          = m_device.getDevice().createGraphicsPipelineUnique(nullptr, pipelineInfo);
-    m_vkGraphicsPipeline = std::move(result.value);
+    // Создаем графический конвейер
+    m_vkGraphicsPipeline =
+        m_device.getDevice().createGraphicsPipelineUnique(nullptr, pipelineInfo).value;
     VulkanLogger::info("Графический конвейер создан успешно");
   }
   catch (const vk::SystemError& e)
   {
     throw std::runtime_error("Не удалось создать графический конвейер: " + std::string(e.what()));
   }
+
+  // Шейдерные модули больше не нужны после создания конвейера
+  // В нашем случае они будут автоматически уничтожены из-за использования unique_ptr
 }
 
 void VulkanRenderer::createFramebuffers()
