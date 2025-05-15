@@ -41,11 +41,20 @@ public:
   void cleanup();
 
   // Геттеры
-  vk::SwapchainKHR                  getSwapChain() const { return *m_vkSwapChain; }
-  vk::Format                        getImageFormat() const { return m_vkSwapChainImageFormat; }
-  vk::Extent2D                      getExtent() const { return m_vkSwapChainExtent; }
-  const std::vector<vk::Image>&     getImages() const { return m_vkSwapChainImages; }
-  const std::vector<vk::ImageView>& getImageViews() const { return m_vkSwapChainImageViews; }
+  vk::SwapchainKHR              getSwapChain() const { return *m_vkSwapChain; }
+  vk::Format                    getImageFormat() const { return m_vkSwapChainImageFormat; }
+  vk::Extent2D                  getExtent() const { return m_vkSwapChainExtent; }
+  const std::vector<vk::Image>& getImages() const { return m_vkSwapChainImages; }
+  std::vector<vk::ImageView>    getImageViews() const
+  {
+    std::vector<vk::ImageView> imageViews;
+    imageViews.reserve(m_vkSwapChainImageViews.size());
+    for (const auto& view : m_vkSwapChainImageViews)
+    {
+      imageViews.push_back(*view);
+    }
+    return imageViews;
+  }
 
   /**
    * @brief Запрос поддержки swap chain для указанного физического устройства
@@ -61,11 +70,11 @@ private:
   SDL_Window*    m_pWindow;
 
   // Объекты swap chain и связанные ресурсы
-  vk::UniqueSwapchainKHR     m_vkSwapChain;             // Swap chain (RAII)
-  std::vector<vk::Image>     m_vkSwapChainImages;       // Изображения (не RAII)
-  vk::Format                 m_vkSwapChainImageFormat;  // Формат изображений
-  vk::Extent2D               m_vkSwapChainExtent;       // Размеры изображений
-  std::vector<vk::ImageView> m_vkSwapChainImageViews;   // Image views (не RAII)
+  vk::UniqueSwapchainKHR           m_vkSwapChain;             // Swap chain (RAII)
+  std::vector<vk::Image>           m_vkSwapChainImages;       // Изображения (не RAII)
+  vk::Format                       m_vkSwapChainImageFormat;  // Формат изображений
+  vk::Extent2D                     m_vkSwapChainExtent;       // Размеры изображений
+  std::vector<vk::UniqueImageView> m_vkSwapChainImageViews;   // Image views (RAII)
 
   // Вспомогательные методы выбора параметров swap chain
   vk::SurfaceFormatKHR chooseSwapSurfaceFormat(

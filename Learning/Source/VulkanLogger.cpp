@@ -10,17 +10,29 @@
 std::ofstream              VulkanLogger::m_logFile;
 bool                       VulkanLogger::m_consoleOutput = true;
 std::mutex                 VulkanLogger::m_mutex;
+LogLevel                   VulkanLogger::m_logLevel = LogLevel::DEBUG;
 vk::DebugUtilsMessengerEXT VulkanLogger::m_debugMessenger;
 vk::Instance               VulkanLogger::m_instance;
 
 // Инициализация логгера
-bool VulkanLogger::init(const std::string& filename, bool consoleOutput)
+bool VulkanLogger::init(const std::string& filename, bool consoleOutput, LogLevel level)
 {
   // Блокировка для потокобезопасности
   std::lock_guard<std::mutex> lock(m_mutex);
 
-  // Настройка флага вывода в консоль
+  // Проверка, не инициализирован ли уже логгер
+  if (m_logFile.is_open())
+  {
+    if (m_consoleOutput)
+    {
+      std::cout << "Логгер уже инициализирован. Файл: " << filename << std::endl;
+    }
+    return true;  // Возвращаем true, так как логгер уже инициализирован и работает
+  }
+
+  // Настройка флага вывода в консоль и уровня логирования
   m_consoleOutput = consoleOutput;
+  m_logLevel      = level;
 
   // Открытие файла для записи логов
   m_logFile.open(filename, std::ios::out | std::ios::app);
@@ -67,24 +79,34 @@ void VulkanLogger::cleanup()
     }
   }
 
-  // Запись завершающего сообщения и закрытие файла
+  // Запись завершающего сообщения и закрытие файла только если файл открыт
   if (m_logFile.is_open())
   {
     m_logFile << "\n==========================================================\n";
     m_logFile << "Завершение сессии логирования: " << getTimestamp() << "\n";
     m_logFile << "==========================================================\n\n";
     m_logFile.close();
-  }
 
-  if (m_consoleOutput)
+    if (m_consoleOutput)
+    {
+      std::cout << "Логгер завершил работу." << std::endl;
+    }
+  }
+  else if (m_consoleOutput)
   {
-    std::cout << "Логгер завершил работу." << std::endl;
+    std::cout << "Логгер уже был закрыт или не был инициализирован." << std::endl;
   }
 }
 
 // Логирование сообщения
 void VulkanLogger::log(LogLevel level, const std::string& message)
 {
+  // Проверка уровня логирования
+  if (level < m_logLevel)
+  {
+    return;
+  }
+
   std::lock_guard<std::mutex> lock(m_mutex);
 
   // Формирование строки лога
@@ -114,16 +136,106 @@ void VulkanLogger::log(LogLevel level, const std::string& message)
   }
 }
 
+// Логирование отладочной информации
+void VulkanLogger::debug(const std::string& message)
+{
+  log(LogLevel::DEBUG, message);
+}
+
 // Логирование информационного сообщения
 void VulkanLogger::info(const std::string& message)
 {
   log(LogLevel::INFO, message);
 }
 
+// Логирование предупреждения
+void VulkanLogger::warning(const std::string& message)
+{
+  log(LogLevel::WARNING, message);
+}
+
 // Логирование ошибки
 void VulkanLogger::error(const std::string& message)
 {
   log(LogLevel::ERROR, message);
+}
+
+// Логирование фатальной ошибки
+void VulkanLogger::fatal(const std::string& message)
+{
+  log(LogLevel::FATAL, message);
+}
+
+// Установка уровня логирования
+void VulkanLogger::setLogLevel(LogLevel level)
+{
+  std::lock_guard<std::mutex> lock(m_mutex);
+  m_logLevel = level;
+
+  // Непосредственно записываем сообщение, чтобы избежать рекурсивного вызова info()
+  std::stringstream logStream;
+  logStream << getTimestamp() << " [" << levelToString(LogLevel::INFO) << "] "
+            << "Установлен уровень логирования: " << levelToString(level);
+  std::string logMessage = logStream.str();
+
+  if (m_logFile.is_open())
+  {
+    m_logFile << logMessage << std::endl;
+    m_logFile.flush();
+  }
+
+  if (m_consoleOutput)
+  {
+    std::cout << logMessage << std::endl;
+  }
+}
+
+// Получение текущего уровня логирования
+LogLevel VulkanLogger::getLogLevel()
+{
+  std::lock_guard<std::mutex> lock(m_mutex);
+  return m_logLevel;
+}
+
+// Запись лога в отдельный файл
+bool VulkanLogger::logToFile(const std::string& filename, const std::string& content, bool append)
+{
+  // Открываем файл для записи без использования мьютекса логгера
+  std::ofstream           file;
+  std::ios_base::openmode mode = std::ios::out;
+  if (append)
+  {
+    mode |= std::ios::app;
+  }
+
+  file.open(filename, mode);
+  if (!file.is_open())
+  {
+    // Используем прямой вывод в консоль вместо error(), чтобы избежать deadlock
+    std::string errorMessage = "Не удалось открыть файл для записи: " + filename;
+    std::cerr << getTimestamp() << " [ERROR] " << errorMessage << std::endl;
+
+    // Теперь можем безопасно использовать error(), так как мьютекс не заблокирован
+    error(errorMessage);
+    return false;
+  }
+
+  // Записываем содержимое
+  file << content;
+  file.close();
+
+  // Логируем успешную запись, только если уровень логирования позволяет
+  if (m_logLevel <= LogLevel::DEBUG)
+  {
+    // Создаем сообщение с информацией о размере записанных данных
+    std::string debugMessage = "Данные записаны в файл: " + filename +
+                               " (размер: " + std::to_string(content.size()) + " байт)";
+
+    // Вызываем метод debug для логирования
+    debug(debugMessage);
+  }
+
+  return true;
 }
 
 // Настройка отладочного обратного вызова Vulkan
@@ -183,7 +295,7 @@ void VulkanLogger::getRequiredExtensions(std::vector<const char*>& extensions)
 VKAPI_ATTR VkBool32 VKAPI_CALL VulkanLogger::debugCallback(
     VkDebugUtilsMessageSeverityFlagBitsEXT      messageSeverity,
     VkDebugUtilsMessageTypeFlagsEXT             messageType,
-    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData)
+    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData [[maybe_unused]])
 {
   // Определение уровня логирования на основе серьезности сообщения
   LogLevel level;
@@ -236,7 +348,16 @@ std::string VulkanLogger::getTimestamp()
   auto ms   = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
 
   std::stringstream ss;
-  ss << std::put_time(std::localtime(&time), "%Y-%m-%d %H:%M:%S");
+  // Используем безопасную версию localtime
+#ifdef _WIN32
+  struct tm timeInfo;
+  localtime_s(&timeInfo, &time);
+  ss << std::put_time(&timeInfo, "%Y-%m-%d %H:%M:%S");
+#else
+  struct tm timeInfo;
+  localtime_r(&time, &timeInfo);
+  ss << std::put_time(&timeInfo, "%Y-%m-%d %H:%M:%S");
+#endif
   ss << '.' << std::setfill('0') << std::setw(3) << ms.count();
 
   return ss.str();

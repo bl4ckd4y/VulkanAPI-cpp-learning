@@ -10,13 +10,6 @@
 
 #include "VulkanLogger.h"
 
-// Включение/выключение валидационных слоев
-#ifdef NDEBUG
-const bool enableValidationLayers = false;
-#else
-const bool enableValidationLayers = true;
-#endif
-
 /**
  * @brief Базовый класс для работы с Vulkan API.
  * Отвечает за инициализацию Vulkan, создание экземпляра и поверхности.
@@ -76,4 +69,11 @@ private:
 
   // Константы
   const std::vector<const char*> m_validationLayers = {"VK_LAYER_KHRONOS_validation"};
+
+  // Включение/выключение валидационных слоев
+#ifdef NDEBUG
+  static constexpr bool m_enableValidationLayers = false;
+#else
+  static constexpr bool m_enableValidationLayers = true;
+#endif
 };

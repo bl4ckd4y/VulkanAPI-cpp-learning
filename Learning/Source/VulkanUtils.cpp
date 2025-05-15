@@ -4,13 +4,15 @@
 #include <iostream>
 #include <stdexcept>
 
+#include "VulkanLogger.h"
+
 namespace VulkanUtils
 {
   bool checkVkResult(VkResult result, const std::string& message)
   {
     if (result != VK_SUCCESS)
     {
-      std::cerr << "Vulkan ошибка (" << result << "): " << message << std::endl;
+      VulkanLogger::error("Vulkan ошибка (" + std::to_string(result) + "): " + message);
       return false;
     }
     return true;

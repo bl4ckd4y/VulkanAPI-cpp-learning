@@ -3,7 +3,10 @@
 #include <fstream>
 #include <iostream>
 #include <set>
+#include <sstream>
 #include <stdexcept>
+
+#include "VulkanLogger.h"
 
 VulkanDevice::VulkanDevice(vk::Instance instance, vk::SurfaceKHR surface)
     : m_vkInstance(instance), m_vkSurface(surface), m_vkPhysicalDevice(nullptr)
@@ -29,12 +32,12 @@ int VulkanDevice::init()
     // Вывод информации о расширениях
     printDeviceExtensionsInfo();
 
-    std::cout << "VulkanDevice инициализирован успешно!" << std::endl;
+    VulkanLogger::info("VulkanDevice инициализирован успешно!");
     return 0;
   }
   catch (const std::exception& e)
   {
-    std::cerr << "Ошибка при инициализации VulkanDevice: " << e.what() << std::endl;
+    VulkanLogger::error("Ошибка при инициализации VulkanDevice: " + std::string(e.what()));
     return -1;
   }
 }
@@ -52,43 +55,17 @@ void VulkanDevice::printDeviceExtensionsInfo()
     // Получаем доступные расширения
     auto availableExtensions = m_vkPhysicalDevice.enumerateDeviceExtensionProperties();
 
-    // --- Запись подробной информации в файл ---
-    std::ofstream logFile("device_extensions.log", std::ios::out | std::ios::trunc);
-    if (logFile.is_open())
+    // Формируем содержимое лога
+    std::stringstream logContent;
+    logContent << "\n============ Информация о расширениях устройства ============\n";
+    logContent << "Доступно расширений: " << availableExtensions.size() << std::endl;
+    logContent << "Список всех расширений:" << std::endl;
+    for (const auto& extension : availableExtensions)
     {
-      logFile << "\n============ Информация о расширениях устройства ============\n";
-      logFile << "Доступно расширений: " << availableExtensions.size() << std::endl;
-      logFile << "Список всех расширений:" << std::endl;
-      for (const auto& extension : availableExtensions)
-      {
-        logFile << "  - " << extension.extensionName << " (версия: " << extension.specVersion << ")"
-                << std::endl;
-      }
-      logFile << "Используемые расширения:" << std::endl;
-      for (const auto& requiredExt : m_deviceExtensions)
-      {
-        bool found = false;
-        for (const auto& ext : availableExtensions)
-        {
-          if (strcmp(requiredExt, ext.extensionName) == 0)
-          {
-            found = true;
-            break;
-          }
-        }
-        logFile << "  - " << requiredExt << ": "
-                << (found ? "поддерживается" : "НЕ поддерживается!") << std::endl;
-      }
-      logFile << "============================================================\n" << std::endl;
-      logFile.close();
+      logContent << "  - " << extension.extensionName << " (версия: " << extension.specVersion
+                 << ")" << std::endl;
     }
-    else
-    {
-      std::cerr << "Не удалось открыть файл extensions.log для записи!" << std::endl;
-    }
-
-    // --- В консоль выводим только используемые расширения ---
-    std::cout << "Используемые расширения:" << std::endl;
+    logContent << "Используемые расширения:" << std::endl;
     for (const auto& requiredExt : m_deviceExtensions)
     {
       bool found = false;
@@ -100,13 +77,39 @@ void VulkanDevice::printDeviceExtensionsInfo()
           break;
         }
       }
-      std::cout << "  - " << requiredExt << ": "
-                << (found ? "поддерживается" : "НЕ поддерживается!") << std::endl;
+      logContent << "  - " << requiredExt << ": "
+                 << (found ? "поддерживается" : "НЕ поддерживается!") << std::endl;
+    }
+    logContent << "============================================================\n" << std::endl;
+
+    // Записываем в файл через метод VulkanLogger
+    if (!VulkanLogger::logToFile("device_extensions.log", logContent.str(), false))
+    {
+      // Если не удалось открыть файл, предупреждение уже будет выведено в logToFile
+      VulkanLogger::warning(
+          "Не удалось записать информацию о расширениях в файл device_extensions.log");
+    }
+
+    // --- В лог выводим только используемые расширения ---
+    VulkanLogger::info("Используемые расширения устройства:");
+    for (const auto& requiredExt : m_deviceExtensions)
+    {
+      bool found = false;
+      for (const auto& ext : availableExtensions)
+      {
+        if (strcmp(requiredExt, ext.extensionName) == 0)
+        {
+          found = true;
+          break;
+        }
+      }
+      VulkanLogger::info("  - " + std::string(requiredExt) + ": " +
+                         (found ? "поддерживается" : "НЕ поддерживается!"));
     }
   }
   catch (const std::exception& e)
   {
-    std::cerr << "Ошибка при получении информации о расширениях: " << e.what() << std::endl;
+    VulkanLogger::error("Ошибка при получении информации о расширениях: " + std::string(e.what()));
   }
 }
 
@@ -130,7 +133,9 @@ void VulkanDevice::pickPhysicalDevice()
 
       // Вывод информации о выбранном устройстве
       vk::PhysicalDeviceProperties deviceProperties = m_vkPhysicalDevice.getProperties();
-      std::cout << "Выбрано устройство: " << deviceProperties.deviceName << std::endl;
+      // Преобразуем deviceName в std::string используя string constructor со старт и длиной
+      std::string deviceName(deviceProperties.deviceName.data());
+      VulkanLogger::info("Выбрано устройство: " + deviceName);
       break;
     }
   }
@@ -177,7 +182,7 @@ void VulkanDevice::createLogicalDevice()
   try
   {
     m_vkDevice = m_vkPhysicalDevice.createDeviceUnique(createInfo);
-    std::cout << "Логическое устройство создано успешно" << std::endl;
+    VulkanLogger::info("Логическое устройство создано успешно");
   }
   catch (const vk::SystemError& e)
   {
@@ -239,8 +244,9 @@ QueueFamilyIndices VulkanDevice::findQueueFamilies(vk::PhysicalDevice device)
     }
 
     // Проверка поддержки презентации
-    VkBool32 presentSupport = false;
-    device.getSurfaceSupportKHR(i, m_vkSurface, &presentSupport);
+    VkBool32              presentSupport = false;
+    [[maybe_unused]] auto supportResult =
+        device.getSurfaceSupportKHR(i, m_vkSurface, &presentSupport);
     if (presentSupport)
     {
       indices.presentFamily = i;

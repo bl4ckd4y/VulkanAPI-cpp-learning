@@ -6,6 +6,8 @@
 #include <limits>
 #include <stdexcept>
 
+#include "VulkanLogger.h"
+
 VulkanRenderer::VulkanRenderer(VulkanDevice& device, VulkanSwapChain& swapChain)
     : m_device(device), m_swapChain(swapChain)
 {
@@ -30,12 +32,12 @@ int VulkanRenderer::init()
     createCommandBuffers();
     createSyncObjects();
 
-    std::cout << "VulkanRenderer инициализирован успешно!" << std::endl;
+    VulkanLogger::info("VulkanRenderer инициализирован успешно!");
     return 0;
   }
   catch (const std::exception& e)
   {
-    std::cerr << "Ошибка при инициализации VulkanRenderer: " << e.what() << std::endl;
+    VulkanLogger::error("Ошибка при инициализации VulkanRenderer: " + std::string(e.what()));
     return -1;
   }
 }
@@ -93,7 +95,7 @@ void VulkanRenderer::createRenderPass()
   try
   {
     m_vkRenderPass = m_device.getDevice().createRenderPassUnique(renderPassInfo);
-    std::cout << "Render pass создан успешно" << std::endl;
+    VulkanLogger::info("Render pass создан успешно");
   }
   catch (const vk::SystemError& e)
   {
@@ -221,7 +223,7 @@ void VulkanRenderer::createGraphicsPipeline()
   {
     auto result          = m_device.getDevice().createGraphicsPipelineUnique(nullptr, pipelineInfo);
     m_vkGraphicsPipeline = std::move(result.value);
-    std::cout << "Графический конвейер создан успешно" << std::endl;
+    VulkanLogger::info("Графический конвейер создан успешно");
   }
   catch (const vk::SystemError& e)
   {
@@ -260,7 +262,7 @@ void VulkanRenderer::createFramebuffers()
     }
   }
 
-  std::cout << "Framebuffers созданы успешно" << std::endl;
+  VulkanLogger::info("Framebuffers созданы успешно");
 }
 
 void VulkanRenderer::createCommandPool()
@@ -276,7 +278,7 @@ void VulkanRenderer::createCommandPool()
   try
   {
     m_vkCommandPool = m_device.getDevice().createCommandPoolUnique(poolInfo);
-    std::cout << "Command pool создан успешно" << std::endl;
+    VulkanLogger::info("Command pool создан успешно");
   }
   catch (const vk::SystemError& e)
   {
@@ -298,7 +300,7 @@ void VulkanRenderer::createCommandBuffers()
   try
   {
     m_vkCommandBuffers = m_device.getDevice().allocateCommandBuffersUnique(allocInfo);
-    std::cout << "Command buffers созданы успешно" << std::endl;
+    VulkanLogger::info("Command buffers созданы успешно");
   }
   catch (const vk::SystemError& e)
   {
@@ -351,7 +353,7 @@ void VulkanRenderer::createSyncObjects()
     }
   }
 
-  std::cout << "Объекты синхронизации созданы успешно" << std::endl;
+  VulkanLogger::info("Объекты синхронизации созданы успешно");
 }
 
 void VulkanRenderer::createVertexBuffer()
@@ -402,8 +404,9 @@ void VulkanRenderer::createVertexBuffer()
   m_device.getDevice().bindBufferMemory(*stagingBuffer, *stagingBufferMemory, 0);
 
   // Копирование данных вершин в стадийный буфер
-  void* data;
-  m_device.getDevice().mapMemory(*stagingBufferMemory, 0, bufferSize, {}, &data);
+  void*                 data;
+  [[maybe_unused]] auto mapResult =
+      m_device.getDevice().mapMemory(*stagingBufferMemory, 0, bufferSize, {}, &data);
   memcpy(data, m_vertices.data(), (size_t)bufferSize);
   m_device.getDevice().unmapMemory(*stagingBufferMemory);
 
@@ -470,10 +473,10 @@ void VulkanRenderer::createVertexBuffer()
   vk::CommandBuffer commandBuffers[] = {*tempCommandBuffer};
   submitInfo.pCommandBuffers         = commandBuffers;
 
-  m_device.getGraphicsQueue().submit(submitInfo, nullptr);
+  m_device.getGraphicsQueue().submit(submitInfo, nullptr);  // возвращает void в Vulkan C++ API
   m_device.getGraphicsQueue().waitIdle();
 
-  std::cout << "Буфер вершин создан успешно" << std::endl;
+  VulkanLogger::info("Буфер вершин создан успешно");
 }
 
 bool VulkanRenderer::drawFrame()
@@ -481,17 +484,17 @@ bool VulkanRenderer::drawFrame()
   try
   {
     // Ожидание завершения предыдущего кадра
-    auto result = m_device.getDevice().waitForFences(*m_vkInFlightFences[m_currentFrame], VK_TRUE,
-                                                     std::numeric_limits<uint64_t>::max());
+    [[maybe_unused]] auto fenceResult = m_device.getDevice().waitForFences(
+        *m_vkInFlightFences[m_currentFrame], VK_TRUE, std::numeric_limits<uint64_t>::max());
 
     // Получение индекса изображения из цепочки обмена
     uint32_t imageIndex;
     try
     {
-      auto result = m_device.getDevice().acquireNextImageKHR(
+      auto acquireResult = m_device.getDevice().acquireNextImageKHR(
           m_swapChain.getSwapChain(), std::numeric_limits<uint64_t>::max(),
           *m_vkImageAvailableSemaphores[m_currentFrame], nullptr);
-      imageIndex = result.value;
+      imageIndex = acquireResult.value;
     }
     catch (const vk::OutOfDateKHRError&)
     {
@@ -548,7 +551,7 @@ bool VulkanRenderer::drawFrame()
     // Отображение кадра на экране
     try
     {
-      m_device.getPresentQueue().presentKHR(presentInfo);
+      [[maybe_unused]] auto presentResult = m_device.getPresentQueue().presentKHR(presentInfo);
     }
     catch (const vk::OutOfDateKHRError&)
     {
@@ -577,7 +580,7 @@ bool VulkanRenderer::drawFrame()
   }
   catch (const std::exception& e)
   {
-    std::cerr << "Ошибка при отрисовке кадра: " << e.what() << std::endl;
+    VulkanLogger::error("Ошибка при отрисовке кадра: " + std::string(e.what()));
     return false;
   }
 }

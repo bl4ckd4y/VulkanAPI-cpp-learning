@@ -29,9 +29,11 @@ public:
    * @brief Инициализирует логгер
    * @param filename Файл для записи логов
    * @param consoleOutput Дублировать вывод в консоль
+   * @param level Минимальный уровень логирования
    * @return true если инициализация прошла успешно
    */
-  static bool init(const std::string& filename, bool consoleOutput = true);
+  static bool init(const std::string& filename, bool consoleOutput = true,
+                   LogLevel level = LogLevel::DEBUG);
 
   /**
    * @brief Освобождает ресурсы логгера
@@ -46,16 +48,56 @@ public:
   static void log(LogLevel level, const std::string& message);
 
   /**
+   * @brief Краткий вариант для логирования отладочной информации
+   * @param message Сообщение для логирования
+   */
+  static void debug(const std::string& message);
+
+  /**
    * @brief Краткий вариант для логирования информации
    * @param message Сообщение для логирования
    */
   static void info(const std::string& message);
 
   /**
+   * @brief Краткий вариант для логирования предупреждений
+   * @param message Сообщение для логирования
+   */
+  static void warning(const std::string& message);
+
+  /**
    * @brief Краткий вариант для логирования ошибки
    * @param message Сообщение для логирования
    */
   static void error(const std::string& message);
+
+  /**
+   * @brief Краткий вариант для логирования фатальной ошибки
+   * @param message Сообщение для логирования
+   */
+  static void fatal(const std::string& message);
+
+  /**
+   * @brief Установить новый уровень логирования
+   * @param level Новый минимальный уровень логирования
+   */
+  static void setLogLevel(LogLevel level);
+
+  /**
+   * @brief Получить текущий уровень логирования
+   * @return Текущий минимальный уровень логирования
+   */
+  static LogLevel getLogLevel();
+
+  /**
+   * @brief Записать лог в отдельный файл (для больших объемов данных)
+   * @param filename Имя файла для записи
+   * @param content Содержимое для записи
+   * @param append Добавлять в конец файла или перезаписать
+   * @return true если запись выполнена успешно
+   */
+  static bool logToFile(const std::string& filename, const std::string& content,
+                        bool append = false);
 
   /**
    * @brief Настраивает отладочный обратный вызов для Vulkan
@@ -82,6 +124,9 @@ private:
 
   // Мьютекс для потокобезопасной записи
   static std::mutex m_mutex;
+
+  // Минимальный уровень логирования
+  static LogLevel m_logLevel;
 
   // Отладочные объекты Vulkan
   static vk::DebugUtilsMessengerEXT m_debugMessenger;

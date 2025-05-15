@@ -6,6 +6,8 @@
 #include <limits>
 #include <stdexcept>
 
+#include "VulkanLogger.h"
+
 VulkanSwapChain::VulkanSwapChain(VulkanDevice& device, vk::SurfaceKHR surface, SDL_Window* window)
     : m_device(device), m_vkSurface(surface), m_pWindow(window)
 {
@@ -27,12 +29,12 @@ int VulkanSwapChain::init()
     // Создание image views
     createImageViews();
 
-    std::cout << "VulkanSwapChain инициализирован успешно!" << std::endl;
+    VulkanLogger::info("VulkanSwapChain инициализирован успешно!");
     return 0;
   }
   catch (const std::exception& e)
   {
-    std::cerr << "Ошибка при инициализации VulkanSwapChain: " << e.what() << std::endl;
+    VulkanLogger::error("Ошибка при инициализации VulkanSwapChain: " + std::string(e.what()));
     return -1;
   }
 }
@@ -46,19 +48,14 @@ void VulkanSwapChain::cleanup()
 
 void VulkanSwapChain::cleanupImageViews()
 {
-  // Очистка image views
-  for (auto imageView : m_vkSwapChainImageViews)
-  {
-    if (imageView)
-    {
-      m_device.getDevice().destroyImageView(imageView);
-    }
-  }
+  // Очистка image views происходит автоматически через RAII (vk::UniqueImageView)
   m_vkSwapChainImageViews.clear();
 }
 
 void VulkanSwapChain::createSwapChain()
 {
+  VulkanLogger::debug("Начало создания swap chain");
+
   // Запрос поддержки swap chain
   SwapChainSupportDetails swapChainSupport = querySwapChainSupport(m_device.getPhysicalDevice());
 
@@ -74,6 +71,8 @@ void VulkanSwapChain::createSwapChain()
   {
     imageCount = swapChainSupport.capabilities.maxImageCount;
   }
+
+  VulkanLogger::debug("Выбрано количество изображений в swap chain: " + std::to_string(imageCount));
 
   // Создание информации о swap chain
   vk::SwapchainCreateInfoKHR createInfo = {};
@@ -95,11 +94,15 @@ void VulkanSwapChain::createSwapChain()
     createInfo.imageSharingMode      = vk::SharingMode::eConcurrent;
     createInfo.queueFamilyIndexCount = 2;
     createInfo.pQueueFamilyIndices   = queueFamilyIndices;
+
+    VulkanLogger::debug("Используется режим совместного использования изображений между очередями");
   }
   else
   {
     // Если индексы одинаковые, используем эксклюзивный режим
     createInfo.imageSharingMode = vk::SharingMode::eExclusive;
+
+    VulkanLogger::debug("Используется эксклюзивный режим использования изображений");
   }
 
   // Дополнительные параметры
@@ -113,7 +116,7 @@ void VulkanSwapChain::createSwapChain()
   try
   {
     m_vkSwapChain = m_device.getDevice().createSwapchainKHRUnique(createInfo);
-    std::cout << "Swap chain создан успешно" << std::endl;
+    VulkanLogger::info("Swap chain создан успешно");
   }
   catch (const vk::SystemError& e)
   {
@@ -125,11 +128,14 @@ void VulkanSwapChain::createSwapChain()
   m_vkSwapChainImageFormat = surfaceFormat.format;
   m_vkSwapChainExtent      = extent;
 
-  std::cout << "Количество изображений в swap chain: " << m_vkSwapChainImages.size() << std::endl;
+  VulkanLogger::info("Количество изображений в swap chain: " +
+                     std::to_string(m_vkSwapChainImages.size()));
 }
 
 void VulkanSwapChain::createImageViews()
 {
+  VulkanLogger::debug("Начало создания image views");
+
   // Очистка старых image views, если они есть
   cleanupImageViews();
 
@@ -159,7 +165,7 @@ void VulkanSwapChain::createImageViews()
 
     try
     {
-      m_vkSwapChainImageViews[i] = m_device.getDevice().createImageView(createInfo);
+      m_vkSwapChainImageViews[i] = m_device.getDevice().createImageViewUnique(createInfo);
     }
     catch (const vk::SystemError& e)
     {
@@ -167,7 +173,7 @@ void VulkanSwapChain::createImageViews()
     }
   }
 
-  std::cout << "Image views созданы успешно" << std::endl;
+  VulkanLogger::info("Image views созданы успешно");
 }
 
 SwapChainSupportDetails VulkanSwapChain::querySwapChainSupport(vk::PhysicalDevice device)

@@ -3,6 +3,8 @@
 #include <iostream>
 #include <stdexcept>
 
+#include "VulkanLogger.h"
+
 VulkanApp::VulkanApp()
 {
   // Инициализация компонентов будет выполнена в методе run()
@@ -30,7 +32,7 @@ int VulkanApp::run()
   }
   catch (const std::exception& e)
   {
-    std::cerr << "Ошибка: " << e.what() << std::endl;
+    VulkanLogger::error("Ошибка: " + std::string(e.what()));
     return -1;
   }
 }
@@ -43,7 +45,7 @@ bool VulkanApp::initComponents()
     m_core = std::make_unique<VulkanCore>();
     if (m_core->init() != 0)
     {
-      std::cerr << "Ошибка при инициализации VulkanCore" << std::endl;
+      VulkanLogger::error("Ошибка при инициализации VulkanCore");
       return false;
     }
 
@@ -51,7 +53,7 @@ bool VulkanApp::initComponents()
     m_device = std::make_unique<VulkanDevice>(m_core->getInstance(), m_core->getSurface());
     if (m_device->init() != 0)
     {
-      std::cerr << "Ошибка при инициализации VulkanDevice" << std::endl;
+      VulkanLogger::error("Ошибка при инициализации VulkanDevice");
       return false;
     }
 
@@ -60,7 +62,7 @@ bool VulkanApp::initComponents()
         std::make_unique<VulkanSwapChain>(*m_device, m_core->getSurface(), m_core->getWindow());
     if (m_swapChain->init() != 0)
     {
-      std::cerr << "Ошибка при инициализации VulkanSwapChain" << std::endl;
+      VulkanLogger::error("Ошибка при инициализации VulkanSwapChain");
       return false;
     }
 
@@ -68,44 +70,44 @@ bool VulkanApp::initComponents()
     m_renderer = std::make_unique<VulkanRenderer>(*m_device, *m_swapChain);
     if (m_renderer->init() != 0)
     {
-      std::cerr << "Ошибка при инициализации VulkanRenderer" << std::endl;
+      VulkanLogger::error("Ошибка при инициализации VulkanRenderer");
       return false;
     }
 
-    std::cout << "Все компоненты инициализированы успешно!" << std::endl;
+    VulkanLogger::info("Все компоненты инициализированы успешно!");
     return true;
   }
   catch (const std::exception& e)
   {
-    std::cerr << "Ошибка при инициализации компонентов: " << e.what() << std::endl;
+    VulkanLogger::error("Ошибка при инициализации компонентов: " + std::string(e.what()));
     return false;
   }
 }
 
 void VulkanApp::mainLoop()
 {
-  std::cout << "Запуск основного цикла..." << std::endl;
+  VulkanLogger::info("Запуск основного цикла...");
 
   // Цикл обработки событий и рендеринга
   int frameCount = 0;
   while (m_core->processEvents())
   {
-    std::cout << "Отрисовка кадра " << frameCount++ << std::endl;
+    VulkanLogger::debug("Отрисовка кадра " + std::to_string(frameCount++));
 
     // Отрисовка кадра
     if (!m_renderer->drawFrame())
     {
-      std::cout << "Ошибка при отрисовке кадра, завершение..." << std::endl;
+      VulkanLogger::error("Ошибка при отрисовке кадра, завершение...");
       break;
     }
 
-    // Добавим задержку для отладки
-    SDL_Delay(100);
+    // Добавим небольшую задержку для ограничения FPS (16ms ~= 60fps)
+    SDL_Delay(16);
 
     // Ограничим число кадров для тестирования
     if (frameCount > 300)
     {
-      std::cout << "Достигнуто максимальное число кадров, завершение..." << std::endl;
+      VulkanLogger::info("Достигнуто максимальное число кадров, завершение...");
       break;
     }
   }
@@ -113,5 +115,5 @@ void VulkanApp::mainLoop()
   // Ожидание завершения всех операций перед выходом
   m_device->getDevice().waitIdle();
 
-  std::cout << "Основной цикл завершен" << std::endl;
+  VulkanLogger::info("Основной цикл завершен");
 }

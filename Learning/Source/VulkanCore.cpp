@@ -18,8 +18,8 @@ int VulkanCore::init()
 {
   try
   {
-    // Инициализация логгера
-    initLogger();
+    // Удаляем инициализацию логгера, так как это делается в main.cpp
+    // initLogger();
 
     VulkanLogger::info("Начало инициализации VulkanCore");
 
@@ -30,7 +30,7 @@ int VulkanCore::init()
     createInstance();
 
     // Настройка отладочного мессенджера, если включены валидационные слои
-    if (enableValidationLayers)
+    if (m_enableValidationLayers)
     {
       VulkanLogger::info("Настройка отладочного мессенджера Vulkan");
       if (!VulkanLogger::setupDebugMessenger(getInstance()))
@@ -52,13 +52,11 @@ int VulkanCore::init()
     VulkanLogger::info("Поверхность Vulkan создана успешно");
 
     VulkanLogger::info("VulkanCore инициализирован успешно!");
-    std::cout << "VulkanCore инициализирован успешно!" << std::endl;
     return 0;
   }
   catch (const std::exception& e)
   {
     VulkanLogger::error("Ошибка при инициализации VulkanCore: " + std::string(e.what()));
-    std::cerr << "Ошибка при инициализации VulkanCore: " << e.what() << std::endl;
     cleanup();
     return -1;
   }
@@ -72,17 +70,14 @@ void VulkanCore::cleanup()
   // Surface и Instance уничтожаются автоматически через RAII (vk::Unique*)
   cleanupWindow();
 
-  // Очистка логгера должна быть последней
-  VulkanLogger::cleanup();
+  // Удаляем закрытие логгера, так как это делается в main.cpp
+  // VulkanLogger::cleanup();
 }
 
-// Инициализация логгера
+// Инициализация логгера - больше не используется, но оставляем для обратной совместимости
 void VulkanCore::initLogger()
 {
-  if (!VulkanLogger::init("vulkan_app.log"))
-  {
-    std::cerr << "Предупреждение: Не удалось инициализировать логгер" << std::endl;
-  }
+  // Функция оставлена пустой, так как инициализация происходит в main.cpp
 }
 
 // Обработка событий
@@ -104,22 +99,18 @@ bool VulkanCore::processEvents()
 void VulkanCore::initWindow()
 {
   VulkanLogger::info("Инициализация SDL...");
-  std::cout << "Инициализация SDL..." << std::endl;
 
   // Инициализация SDL2
   if (SDL_Init(SDL_INIT_VIDEO) != 0)
   {
     std::string error = SDL_GetError();
     VulkanLogger::error("Ошибка SDL_Init: " + error);
-    std::cerr << "Ошибка SDL_Init: " << error << std::endl;
     throw std::runtime_error("Не удалось инициализировать SDL2: " + error);
   }
 
   VulkanLogger::info("SDL инициализирован успешно");
-  std::cout << "SDL инициализирован успешно" << std::endl;
 
   VulkanLogger::info("Создание окна SDL...");
-  std::cout << "Создание окна SDL..." << std::endl;
 
   // Создание окна
   m_pWindow = SDL_CreateWindow("Vulkan Application",                 // Заголовок
@@ -133,13 +124,11 @@ void VulkanCore::initWindow()
   {
     std::string error = SDL_GetError();
     VulkanLogger::error("Ошибка SDL_CreateWindow: " + error);
-    std::cerr << "Ошибка SDL_CreateWindow: " << error << std::endl;
     SDL_Quit();
     throw std::runtime_error("Не удалось создать окно SDL2: " + error);
   }
 
   VulkanLogger::info("Окно SDL создано успешно");
-  std::cout << "Окно SDL создано успешно" << std::endl;
 }
 
 // Очистка окна SDL
@@ -195,7 +184,7 @@ void VulkanCore::createInstance()
   VulkanLogger::info("Создание экземпляра Vulkan");
 
   // Проверка поддержки валидационных слоев
-  if (enableValidationLayers && !checkValidationLayerSupport())
+  if (m_enableValidationLayers && !checkValidationLayerSupport())
   {
     VulkanLogger::error("Запрошенные валидационные слои не поддерживаются!");
     throw std::runtime_error("Запрошенные валидационные слои не поддерживаются!");
@@ -225,7 +214,7 @@ void VulkanCore::createInstance()
   }
 
   // Добавляем расширения для отладки, если включены валидационные слои
-  if (enableValidationLayers)
+  if (m_enableValidationLayers)
   {
     VulkanLogger::info("Добавление отладочных расширений");
     VulkanLogger::getRequiredExtensions(extensions);
@@ -247,7 +236,7 @@ void VulkanCore::createInstance()
   createInfo.ppEnabledExtensionNames = extensions.data();
 
   // Добавляем валидационные слои, если включены
-  if (enableValidationLayers)
+  if (m_enableValidationLayers)
   {
     VulkanLogger::info("Включение валидационных слоев");
     createInfo.enabledLayerCount   = static_cast<uint32_t>(m_validationLayers.size());
@@ -262,7 +251,6 @@ void VulkanCore::createInstance()
   {
     m_vkInstance = vk::createInstanceUnique(createInfo);
     VulkanLogger::info("Экземпляр Vulkan создан успешно");
-    std::cout << "Экземпляр Vulkan создан успешно" << std::endl;
   }
   catch (const vk::SystemError& e)
   {
