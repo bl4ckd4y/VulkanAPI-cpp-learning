@@ -5,6 +5,8 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <string_view>
+#include <unordered_set>
 
 // Инициализация статических переменных
 std::ofstream              VulkanLogger::m_logFile;
@@ -13,6 +15,42 @@ std::mutex                 VulkanLogger::m_mutex;
 LogLevel                   VulkanLogger::m_logLevel = LogLevel::DEBUG;
 vk::DebugUtilsMessengerEXT VulkanLogger::m_debugMessenger;
 vk::Instance               VulkanLogger::m_instance;
+
+// Вспомогательные функции для внутреннего использования (не в заголовке)
+namespace
+{
+  inline void safeConsoleOutput(const std::string& message, bool isError = false)
+  {
+    if (isError)
+    {
+      std::cerr << message << std::endl;
+    }
+    else
+    {
+      std::cout << message << std::endl;
+    }
+  }
+
+  bool isDebugUtilsExtensionSupported()
+  {
+    try
+    {
+      auto availableExtensions = vk::enumerateInstanceExtensionProperties();
+      for (const auto& extension : availableExtensions)
+      {
+        if (strcmp(VK_EXT_DEBUG_UTILS_EXTENSION_NAME, extension.extensionName) == 0)
+        {
+          return true;
+        }
+      }
+    }
+    catch (...)
+    {
+      // Игнорируем ошибки
+    }
+    return false;
+  }
+}  // namespace
 
 // Инициализация логгера
 bool VulkanLogger::init(const std::string& filename, bool consoleOutput, LogLevel level)
@@ -25,7 +63,7 @@ bool VulkanLogger::init(const std::string& filename, bool consoleOutput, LogLeve
   {
     if (m_consoleOutput)
     {
-      std::cout << "Логгер уже инициализирован. Файл: " << filename << std::endl;
+      safeConsoleOutput("Логгер уже инициализирован. Файл: " + filename);
     }
     return true;  // Возвращаем true, так как логгер уже инициализирован и работает
   }
@@ -40,7 +78,7 @@ bool VulkanLogger::init(const std::string& filename, bool consoleOutput, LogLeve
   {
     if (m_consoleOutput)
     {
-      std::cerr << "Ошибка: не удалось открыть файл логов " << filename << std::endl;
+      safeConsoleOutput("Ошибка: не удалось открыть файл логов " + filename, true);
     }
     return false;
   }
@@ -53,7 +91,7 @@ bool VulkanLogger::init(const std::string& filename, bool consoleOutput, LogLeve
 
   if (m_consoleOutput)
   {
-    std::cout << "Логгер инициализирован. Файл: " << filename << std::endl;
+    safeConsoleOutput("Логгер инициализирован. Файл: " + filename);
   }
 
   return true;
@@ -89,12 +127,12 @@ void VulkanLogger::cleanup()
 
     if (m_consoleOutput)
     {
-      std::cout << "Логгер завершил работу." << std::endl;
+      safeConsoleOutput("Логгер завершил работу.");
     }
   }
   else if (m_consoleOutput)
   {
-    std::cout << "Логгер уже был закрыт или не был инициализирован." << std::endl;
+    safeConsoleOutput("Логгер уже был закрыт или не был инициализирован.");
   }
 }
 
@@ -125,14 +163,7 @@ void VulkanLogger::log(LogLevel level, const std::string& message)
   if (m_consoleOutput)
   {
     // Выбор потока вывода в зависимости от уровня
-    if (level == LogLevel::ERROR || level == LogLevel::FATAL)
-    {
-      std::cerr << logMessage << std::endl;
-    }
-    else
-    {
-      std::cout << logMessage << std::endl;
-    }
+    safeConsoleOutput(logMessage, level == LogLevel::ERROR || level == LogLevel::FATAL);
   }
 }
 
@@ -172,11 +203,9 @@ void VulkanLogger::setLogLevel(LogLevel level)
   std::lock_guard<std::mutex> lock(m_mutex);
   m_logLevel = level;
 
-  // Непосредственно записываем сообщение, чтобы избежать рекурсивного вызова info()
-  std::stringstream logStream;
-  logStream << getTimestamp() << " [" << levelToString(LogLevel::INFO) << "] "
-            << "Установлен уровень логирования: " << levelToString(level);
-  std::string logMessage = logStream.str();
+  // Напрямую формируем и записываем сообщение для избежания рекурсивного вызова
+  std::string logMessage =
+      getTimestamp() + " [INFO] Установлен уровень логирования: " + levelToString(level);
 
   if (m_logFile.is_open())
   {
@@ -186,7 +215,7 @@ void VulkanLogger::setLogLevel(LogLevel level)
 
   if (m_consoleOutput)
   {
-    std::cout << logMessage << std::endl;
+    safeConsoleOutput(logMessage);
   }
 }
 
@@ -200,7 +229,14 @@ LogLevel VulkanLogger::getLogLevel()
 // Запись лога в отдельный файл
 bool VulkanLogger::logToFile(const std::string& filename, const std::string& content, bool append)
 {
-  // Открываем файл для записи без использования мьютекса логгера
+  // Создаем локальную копию флага консольного вывода для использования вне блокировки мьютекса
+  bool consoleOutput;
+  {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    consoleOutput = m_consoleOutput;
+  }
+
+  // Открываем файл для записи без блокировки основного мьютекса
   std::ofstream           file;
   std::ios_base::openmode mode = std::ios::out;
   if (append)
@@ -211,11 +247,16 @@ bool VulkanLogger::logToFile(const std::string& filename, const std::string& con
   file.open(filename, mode);
   if (!file.is_open())
   {
-    // Используем прямой вывод в консоль вместо error(), чтобы избежать deadlock
     std::string errorMessage = "Не удалось открыть файл для записи: " + filename;
-    std::cerr << getTimestamp() << " [ERROR] " << errorMessage << std::endl;
 
-    // Теперь можем безопасно использовать error(), так как мьютекс не заблокирован
+    // Вывод в консоль без блокировки мьютекса основного логгера
+    if (consoleOutput)
+    {
+      safeConsoleOutput(getTimestamp() + " [ERROR] " + errorMessage, true);
+    }
+
+    // Теперь можем безопасно использовать error(), так как не вызываем его внутри блокированного
+    // участка
     error(errorMessage);
     return false;
   }
@@ -225,7 +266,13 @@ bool VulkanLogger::logToFile(const std::string& filename, const std::string& con
   file.close();
 
   // Логируем успешную запись, только если уровень логирования позволяет
-  if (m_logLevel <= LogLevel::DEBUG)
+  LogLevel currentLevel;
+  {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    currentLevel = m_logLevel;
+  }
+
+  if (currentLevel <= LogLevel::DEBUG)
   {
     // Создаем сообщение с информацией о размере записанных данных
     std::string debugMessage = "Данные записаны в файл: " + filename +
@@ -241,6 +288,13 @@ bool VulkanLogger::logToFile(const std::string& filename, const std::string& con
 // Настройка отладочного обратного вызова Vulkan
 bool VulkanLogger::setupDebugMessenger(vk::Instance instance)
 {
+  // Проверяем поддержку расширения отладки
+  if (!isDebugUtilsExtensionSupported())
+  {
+    error("Расширение VK_EXT_DEBUG_UTILS_EXTENSION_NAME не поддерживается");
+    return false;
+  }
+
   // Сохранение экземпляра Vulkan
   m_instance = instance;
 
@@ -287,8 +341,21 @@ bool VulkanLogger::setupDebugMessenger(vk::Instance instance)
 // Получение необходимых расширений для отладки
 void VulkanLogger::getRequiredExtensions(std::vector<const char*>& extensions)
 {
-  // Добавляем расширение для отладочных сообщений
-  extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+  // Проверяем поддержку расширения отладки перед добавлением
+  if (isDebugUtilsExtensionSupported())
+  {
+    extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+  }
+  else
+  {
+    // Используем захваченный lock_guard для безопасного доступа к консоли
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (m_consoleOutput)
+    {
+      safeConsoleOutput("Внимание: расширение VK_EXT_DEBUG_UTILS_EXTENSION_NAME не поддерживается",
+                        true);
+    }
+  }
 }
 
 // Обратный вызов для отладочных сообщений Vulkan
@@ -297,6 +364,9 @@ VKAPI_ATTR VkBool32 VKAPI_CALL VulkanLogger::debugCallback(
     VkDebugUtilsMessageTypeFlagsEXT             messageType,
     const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData [[maybe_unused]])
 {
+  // Создаем локальную копию объекта блокировки для обеспечения потокобезопасности
+  std::lock_guard<std::mutex> lock(m_mutex);
+
   // Определение уровня логирования на основе серьезности сообщения
   LogLevel level;
   if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
@@ -316,7 +386,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL VulkanLogger::debugCallback(
     level = LogLevel::DEBUG;
   }
 
-  // Формирование сообщения с типом и ID
+  // Формирование сообщения с типом, ID и расширенной информацией
   std::stringstream message;
   message << "Vulkan: ";
 
@@ -329,12 +399,52 @@ VKAPI_ATTR VkBool32 VKAPI_CALL VulkanLogger::debugCallback(
   {
     message << "[Performance] ";
   }
+  else if (messageType & VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT)
+  {
+    message << "[General] ";
+  }
+
+  // Добавляем ID сообщения и информацию о местоположении, если доступны
+  if (pCallbackData->pMessageIdName)
+  {
+    message << "[" << pCallbackData->pMessageIdName << "] ";
+  }
 
   // Добавляем сообщение из обратного вызова
   message << pCallbackData->pMessage;
 
-  // Логируем сообщение
-  log(level, message.str());
+  // Добавляем информацию об объектах, если она доступна
+  if (pCallbackData->objectCount > 0 && m_logLevel <= LogLevel::DEBUG)
+  {
+    message << " Объекты: ";
+    for (uint32_t i = 0; i < pCallbackData->objectCount; i++)
+    {
+      if (pCallbackData->pObjects[i].pObjectName)
+      {
+        message << pCallbackData->pObjects[i].pObjectName << ", ";
+      }
+    }
+  }
+
+  // Напрямую используем внутренние функции для логирования, так как уже захватили мьютекс
+  // Формирование строки лога
+  std::stringstream logStream;
+  logStream << getTimestamp() << " [" << levelToString(level) << "] " << message.str();
+  std::string logMessage = logStream.str();
+
+  // Запись в файл
+  if (m_logFile.is_open())
+  {
+    m_logFile << logMessage << std::endl;
+    m_logFile.flush();
+  }
+
+  // Вывод в консоль, если разрешено
+  if (m_consoleOutput)
+  {
+    // Выбор потока вывода в зависимости от уровня
+    safeConsoleOutput(logMessage, level == LogLevel::ERROR || level == LogLevel::FATAL);
+  }
 
   // Всегда возвращаем VK_FALSE, что означает, что сообщение не будет прервано
   return VK_FALSE;
@@ -348,17 +458,25 @@ std::string VulkanLogger::getTimestamp()
   auto ms   = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
 
   std::stringstream ss;
-  // Используем безопасную версию localtime
+  struct tm         timeInfo;
+
+  // Используем переносимый способ получения локального времени
 #ifdef _WIN32
-  struct tm timeInfo;
   localtime_s(&timeInfo, &time);
-  ss << std::put_time(&timeInfo, "%Y-%m-%d %H:%M:%S");
 #else
-  struct tm timeInfo;
   localtime_r(&time, &timeInfo);
-  ss << std::put_time(&timeInfo, "%Y-%m-%d %H:%M:%S");
 #endif
-  ss << '.' << std::setfill('0') << std::setw(3) << ms.count();
+
+  ss << std::put_time(&timeInfo, "%Y-%m-%d %H:%M:%S");
+
+  // Форматирование миллисекунд вручную для улучшения производительности
+  std::string msStr = std::to_string(ms.count());
+  // Добавляем ведущие нули для выравнивания до 3 символов
+  while (msStr.length() < 3)
+  {
+    msStr = "0" + msStr;
+  }
+  ss << '.' << msStr;
 
   return ss.str();
 }
@@ -366,19 +484,15 @@ std::string VulkanLogger::getTimestamp()
 // Преобразование уровня логирования в строку
 std::string VulkanLogger::levelToString(LogLevel level)
 {
-  switch (level)
+  // Используем статический массив string_view для улучшения производительности
+  static const std::string_view levels[] = {"DEBUG", "INFO ", "WARN ", "ERROR", "FATAL", "UNKNOWN"};
+
+  // Безопасно получаем строку в зависимости от уровня
+  size_t index = static_cast<size_t>(level);
+  if (index > 4)
   {
-    case LogLevel::DEBUG:
-      return "DEBUG";
-    case LogLevel::INFO:
-      return "INFO ";
-    case LogLevel::WARNING:
-      return "WARN ";
-    case LogLevel::ERROR:
-      return "ERROR";
-    case LogLevel::FATAL:
-      return "FATAL";
-    default:
-      return "UNKNOWN";
+    index = 5;  // Индекс для "UNKNOWN"
   }
+
+  return std::string(levels[index]);
 }

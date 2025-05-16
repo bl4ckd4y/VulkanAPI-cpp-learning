@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <stdexcept>
+#include <unordered_set>
 
 // Конструктор
 VulkanCore::VulkanCore() {}
@@ -153,21 +154,17 @@ bool VulkanCore::checkValidationLayerSupport()
   // Получаем доступные слои
   auto availableLayers = vk::enumerateInstanceLayerProperties();
 
-  // Проверяем наличие каждого требуемого слоя
+  // Создаем хеш-множество имен доступных слоев для быстрого поиска O(1)
+  std::unordered_set<std::string> availableLayerNames;
+  for (const auto& layer : availableLayers)
+  {
+    availableLayerNames.insert(layer.layerName.data());
+  }
+
+  // Проверяем наличие каждого требуемого слоя в хеш-множестве
   for (const char* layerName : m_validationLayers)
   {
-    bool layerFound = false;
-
-    for (const auto& layerProperties : availableLayers)
-    {
-      if (strcmp(layerName, layerProperties.layerName) == 0)
-      {
-        layerFound = true;
-        break;
-      }
-    }
-
-    if (!layerFound)
+    if (availableLayerNames.find(layerName) == availableLayerNames.end())
     {
       VulkanLogger::error("Валидационный слой не поддерживается: " + std::string(layerName));
       return false;

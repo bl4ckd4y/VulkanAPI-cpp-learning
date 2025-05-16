@@ -5,6 +5,8 @@
 #include <set>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "VulkanLogger.h"
 
@@ -65,18 +67,18 @@ void VulkanDevice::printDeviceExtensionsInfo()
       logContent << "  - " << extension.extensionName << " (версия: " << extension.specVersion
                  << ")" << std::endl;
     }
+
+    // Создаем хеш-таблицу для быстрого поиска по имени расширения
+    std::unordered_map<std::string, const vk::ExtensionProperties*> extensionMap;
+    for (const auto& ext : availableExtensions)
+    {
+      extensionMap[ext.extensionName.data()] = &ext;
+    }
+
     logContent << "Используемые расширения:" << std::endl;
     for (const auto& requiredExt : m_deviceExtensions)
     {
-      bool found = false;
-      for (const auto& ext : availableExtensions)
-      {
-        if (strcmp(requiredExt, ext.extensionName) == 0)
-        {
-          found = true;
-          break;
-        }
-      }
+      bool found = extensionMap.find(requiredExt) != extensionMap.end();
       logContent << "  - " << requiredExt << ": "
                  << (found ? "поддерживается" : "НЕ поддерживается!") << std::endl;
     }
@@ -94,15 +96,7 @@ void VulkanDevice::printDeviceExtensionsInfo()
     VulkanLogger::info("Используемые расширения устройства:");
     for (const auto& requiredExt : m_deviceExtensions)
     {
-      bool found = false;
-      for (const auto& ext : availableExtensions)
-      {
-        if (strcmp(requiredExt, ext.extensionName) == 0)
-        {
-          found = true;
-          break;
-        }
-      }
+      bool found = extensionMap.find(requiredExt) != extensionMap.end();
       VulkanLogger::info("  - " + std::string(requiredExt) + ": " +
                          (found ? "поддерживается" : "НЕ поддерживается!"));
     }
@@ -324,17 +318,23 @@ bool VulkanDevice::checkDeviceExtensionSupport(vk::PhysicalDevice device)
   // Получение поддерживаемых расширений
   auto availableExtensions = device.enumerateDeviceExtensionProperties();
 
-  // Создание набора необходимых расширений
-  std::set<std::string> requiredExtensions(m_deviceExtensions.begin(), m_deviceExtensions.end());
-
-  // Проверка поддержки каждого расширения
+  // Создаем хеш-множество для O(1) поиска
+  std::unordered_set<std::string> availableExtensionNames;
   for (const auto& extension : availableExtensions)
   {
-    requiredExtensions.erase(extension.extensionName);
+    availableExtensionNames.insert(extension.extensionName.data());
   }
 
-  // Если все расширения поддерживаются, набор должен быть пустым
-  return requiredExtensions.empty();
+  // Проверяем, содержит ли множество доступных расширений все необходимые
+  for (const auto& requiredExtension : m_deviceExtensions)
+  {
+    if (availableExtensionNames.find(requiredExtension) == availableExtensionNames.end())
+    {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 // Поиск семейств очередей
